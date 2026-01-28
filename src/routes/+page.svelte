@@ -26,7 +26,7 @@
 	let programVersionError = null;
 	let programVersionSuccess = false;
 
-	// 하위 회원 계정 생성 관련 변수 (level 3)
+	// 하위 계정 생성 관련 변수 (level 3)
 	let memberEmail = '';
 	let memberPassword = '';
 	let memberConfirmPassword = '';
@@ -1171,9 +1171,9 @@
 	</div>
 	{/if}
 
-	<!-- 하위 회원 계정 생성 섹션 (level 3) -->
+	<!-- 하위 계정 생성 섹션 (level 3) -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
-		<h3 class="text-xl font-semibold mb-6">하위 회원 계정 생성</h3>
+		<h3 class="text-xl font-semibold mb-6">하위 계정 생성</h3>
 
 		<form class="space-y-4" on:submit|preventDefault={handleCreateMember}>
 			{#if memberError}

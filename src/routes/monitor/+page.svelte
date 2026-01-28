@@ -348,7 +348,7 @@
 				if (!u) {
 					goto('/login');
 				} else {
-					// 하위 회원 목록 조회
+					// 하위 계정 목록 조회
 					await fetchReferredMembers();
 				}
 			});
@@ -492,7 +492,7 @@
 
 	<div class="bg-white rounded-lg shadow-md p-6">
 		<div class="flex justify-between items-center mb-4">
-			<h3 class="text-2xl font-semibold">하위 회원 목록</h3>
+			<h3 class="text-2xl font-semibold">하위 계정 목록</h3>
 			<p class="text-sm text-gray-500 text-right">캐릭터가 사냥 중 마을에 도착해 점검을 할때 수집된 정보를 바탕으로 갱신됩니다</p>
 		</div>
 

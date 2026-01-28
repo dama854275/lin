@@ -1,3 +1,7 @@
+<svelte:head>
+	<title>리니지 클래식</title>
+</svelte:head>
+
 <script>
 	import '../app.css';
 	import { user } from '$lib/stores/auth';
@@ -30,7 +34,7 @@
 		<!-- 좌측 사이드바 -->
 		<aside class="w-64 bg-white shadow-lg">
 			<div class="p-6">
-				<h1 class="text-2xl font-bold text-gray-800 mb-8">LinWeb</h1>
+				<h1 class="text-2xl font-bold text-gray-800 mb-8">리니지 클래식</h1>
 				<nav class="space-y-2">
 					<a
 						href="/"
