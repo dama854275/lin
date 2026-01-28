@@ -126,15 +126,6 @@
 								{loading ? '로그인 중...' : '로그인'}
 							</button>
 						</div>
-
-						<div class="text-sm text-center pt-4">
-							<a
-								href="/register"
-								class="font-medium text-sky-600 hover:text-sky-500 transition-colors duration-200"
-							>
-								계정이 없으신가요? 회원가입
-							</a>
-						</div>
 					</form>
 				</div>
 			</div>
