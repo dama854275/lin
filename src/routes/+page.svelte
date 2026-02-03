@@ -26,6 +26,12 @@
 	let programVersionError = null;
 	let programVersionSuccess = false;
 
+	// 프로그램 업데이트 - set 버킷 파일 업로드 (level 1 전용)
+	let programUpdateFile = null;
+	let programUpdateLoading = false;
+	let programUpdateError = null;
+	let programUpdateSuccess = false;
+
 	// 하위 계정 생성 관련 변수 (level 3)
 	let memberEmail = '';
 	let memberPassword = '';
@@ -203,6 +209,34 @@
 			programVersionError = err.message || '버전 수정 중 오류가 발생했습니다.';
 		} finally {
 			programVersionSaving = false;
+		}
+	}
+
+	async function handleProgramUpdateUpload() {
+		if (!programUpdateFile) {
+			programUpdateError = '파일을 선택해 주세요.';
+			return;
+		}
+		programUpdateLoading = true;
+		programUpdateError = null;
+		programUpdateSuccess = false;
+		try {
+			const path = programUpdateFile.name;
+			const { error } = await supabase.storage
+				.from('set')
+				.upload(path, programUpdateFile, { upsert: true });
+
+			if (error) throw error;
+			programUpdateSuccess = true;
+			programUpdateFile = null;
+			setTimeout(() => {
+				programUpdateSuccess = false;
+			}, 3000);
+		} catch (err) {
+			console.error('Program update upload error:', err);
+			programUpdateError = err.message || '파일 업로드 중 오류가 발생했습니다.';
+		} finally {
+			programUpdateLoading = false;
 		}
 	}
 
@@ -1098,9 +1132,17 @@
 		</form>
 	</div>
 
-	<!-- 프로그램 버전 관리 섹션 (level 1 전용) -->
+	<!-- 프로그램 버전 관리 / 프로그램 업데이트 섹션 (level 1 전용) -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
-		<h3 class="text-xl font-semibold mb-6">프로그램 버전 관리</h3>
+		<div class="flex flex-wrap items-center gap-4 mb-6">
+			<h3 class="text-xl font-semibold">프로그램 버전 관리</h3>
+			<span class="text-gray-400">|</span>
+			<h3 class="text-xl font-semibold">프로그램 업데이트</h3>
+		</div>
+
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+			<!-- 프로그램 버전 관리 -->
+			<div>
 
 		{#if programVersionLoading}
 			<div class="text-gray-500 py-2">로딩 중...</div>
@@ -1168,6 +1210,50 @@
 				</div>
 			</form>
 		{/if}
+			</div>
+
+			<!-- 프로그램 업데이트 (set 버킷 업로드) -->
+			<div>
+				<p class="text-sm text-gray-600 mb-4">Supabase 스토리지 <strong>set</strong> 버킷에 파일을 업로드합니다.</p>
+				<form class="space-y-4" on:submit|preventDefault={handleProgramUpdateUpload}>
+					{#if programUpdateError}
+						<div class="bg-red-50 border-l-4 border-red-300 p-4 rounded-lg">
+							<p class="text-sm text-red-700">{programUpdateError}</p>
+						</div>
+					{/if}
+					{#if programUpdateSuccess}
+						<div class="bg-green-50 border-l-4 border-green-300 p-4 rounded-lg">
+							<p class="text-sm text-green-700">파일이 업로드되었습니다.</p>
+						</div>
+					{/if}
+					<div>
+						<label for="programUpdateFile" class="block text-sm font-medium text-gray-700 mb-2">업로드할 파일</label>
+						<input
+							id="programUpdateFile"
+							type="file"
+							accept="*/*"
+							class="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+							on:change={(e) => {
+								programUpdateFile = e.target.files?.[0] ?? null;
+								programUpdateError = null;
+							}}
+						/>
+						{#if programUpdateFile}
+							<p class="mt-1 text-sm text-gray-500">{programUpdateFile.name}</p>
+						{/if}
+					</div>
+					<div class="pt-2">
+						<button
+							type="submit"
+							disabled={programUpdateLoading || !programUpdateFile}
+							class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+						>
+							{programUpdateLoading ? '업로드 중...' : '업로드'}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
 	</div>
 	{/if}
 
