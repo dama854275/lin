@@ -45,6 +45,12 @@
 	let createdAccounts = []; // 생성된 계정 이름 목록
 	let showAccountPopup = false; // 계정 생성 팝업 표시 여부
 
+	// 하위 계정 일괄 생성 시 rate limit 방지: 요청 간 대기 시간(ms)
+	const MEMBER_SIGNUP_DELAY_MS = 1200;
+	// rate limit(429) 시 재시도 대기 시간(ms)
+	const MEMBER_SIGNUP_RETRY_DELAY_MS = 5000;
+	const MEMBER_SIGNUP_MAX_RETRIES = 2;
+
 	// 기간 부여 관련 변수
 	let periodUserId = '';
 	let periodDays = '';
@@ -640,24 +646,67 @@
 				emailsToCreate.push(`${emailPrefix}_${num}@gmail.com`);
 			}
 
+			// 이미 존재하는 계정 조회 (user_info에 있으면 생성 요청을 보내지 않음)
+			const { data: existingUserRows } = await supabase
+				.from('user_info')
+				.select('email')
+				.in('email', emailsToCreate);
+			const existingEmailsSet = new Set(
+				(existingUserRows || []).map((r) => (r.email || '').toLowerCase())
+			);
+			const emailsToActuallyCreate = emailsToCreate.filter(
+				(email) => !existingEmailsSet.has(email.toLowerCase())
+			);
+			const skippedCount = emailsToCreate.length - emailsToActuallyCreate.length;
+
 			let successCount = 0;
 			let errorMessages = [];
 			createdAccounts = []; // 생성된 계정 목록 초기화
 
-			// 각 이메일로 계정 생성
-			for (const email of emailsToCreate) {
-				try {
-					// Supabase Auth로 계정 생성
-					const { data, error: signUpError } = await supabase.auth.signUp({
-						email: email,
-						password: password
-					});
+			const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-					// 각 계정 생성 후 즉시 원래 세션으로 복원 (signUp 후 자동 로그인 방지)
-					if (originalSession) {
-						await supabase.auth.setSession(originalSession);
-					} else {
-						await supabase.auth.signOut();
+			// 각 이메일로 계정 생성 (이미 존재하는 계정은 요청하지 않음, 요청 간 지연으로 rate limit 완화)
+			for (let i = 0; i < emailsToActuallyCreate.length; i++) {
+				const email = emailsToActuallyCreate[i];
+
+				// rate limit 방지: 첫 요청이 아닐 때만 이전 요청 후 대기
+				if (i > 0) {
+					await delay(MEMBER_SIGNUP_DELAY_MS);
+				}
+
+				try {
+					let data = null;
+					let signUpError = null;
+
+					// rate limit(429) 시 일정 시간 대기 후 재시도
+					for (let attempt = 0; attempt <= MEMBER_SIGNUP_MAX_RETRIES; attempt++) {
+						if (attempt > 0) {
+							await delay(MEMBER_SIGNUP_RETRY_DELAY_MS);
+						}
+						const result = await supabase.auth.signUp({
+							email: email,
+							password: password
+						});
+						data = result.data;
+						signUpError = result.error;
+
+						// 각 계정 생성 후 즉시 원래 세션으로 복원 (signUp 후 자동 로그인 방지)
+						if (originalSession) {
+							await supabase.auth.setSession(originalSession);
+						} else {
+							await supabase.auth.signOut();
+						}
+
+						// rate limit(429) 또는 관련 메시지면 재시도, 아니면 탈출
+						const isRateLimit =
+							signUpError &&
+							(signUpError.status === 429 ||
+								/rate\s*limit|too\s*many\s*request|limit\s*exceeded/i.test(
+									signUpError.message || ''
+								));
+						if (!signUpError || !isRateLimit || attempt === MEMBER_SIGNUP_MAX_RETRIES) {
+							break;
+						}
 					}
 
 					if (signUpError) {
@@ -694,8 +743,11 @@
 			}
 
 			// 결과 처리
-			if (successCount === accountCount) {
-				// 모든 계정 생성 성공
+			if (emailsToActuallyCreate.length === 0) {
+				// 이미 존재하는 계정만 있어서 생성 요청을 보내지 않음
+				memberError = `요청한 ${emailsToCreate.length}개의 계정이 이미 모두 존재합니다. 생성 요청을 보내지 않았습니다.`;
+			} else if (successCount === emailsToActuallyCreate.length) {
+				// 새로 생성할 계정이 모두 성공 (이미 존재한 계정은 요청하지 않았음)
 				memberCreatedCount = successCount;
 				memberSuccess = true;
 				memberEmail = '';
@@ -716,13 +768,19 @@
 			} else if (successCount > 0) {
 				// 일부 계정만 생성 성공
 				memberError = `${successCount}개의 계정이 생성되었습니다. 일부 계정 생성에 실패했습니다: ${errorMessages.join(', ')}`;
+				if (skippedCount > 0) {
+					memberError = `${skippedCount}개는 이미 존재하여 건너뛰었고, ` + memberError;
+				}
 				// 일부 성공한 경우에도 생성된 계정 팝업 표시
 				if (createdAccounts.length > 0) {
 					showAccountPopup = true;
 				}
 			} else {
-				// 모든 계정 생성 실패
+				// 모든 계정 생성 실패 (요청은 보냈으나 전부 실패)
 				memberError = `계정 생성에 실패했습니다: ${errorMessages.join(', ')}`;
+				if (skippedCount > 0) {
+					memberError = `${skippedCount}개는 이미 존재하여 건너뛰었고, ` + memberError;
+				}
 			}
 		} catch (err) {
 			console.error('Create member error:', err);
@@ -1413,6 +1471,7 @@
 						<p>• 예시: "test" 입력 + 개수 4 입력 → <span class="font-mono text-blue-900">test_01@gmail.com</span>, <span class="font-mono text-blue-900">test_02@gmail.com</span>, <span class="font-mono text-blue-900">test_03@gmail.com</span>, <span class="font-mono text-blue-900">test_04@gmail.com</span></p>
 						<p>• 생성된 계정은 모두 동일한 비밀번호와 상위 이메일을 가집니다.</p>
 						<p>• 계정 생성 완료 후 생성된 계정 이름이 팝업으로 표시됩니다.</p>
+						<p>• 많은 수를 한 번에 생성할 경우 요청 간 대기(약 1.2초)로 인해 완료까지 시간이 걸릴 수 있습니다. (rate limit 방지)</p>
 					</div>
 				</div>
 			</div>
