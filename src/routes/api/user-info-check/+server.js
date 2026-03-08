@@ -1,33 +1,58 @@
 import { json } from '@sveltejs/kit';
-import { checkToken } from '$lib/server/dama/auth.js';
+import { supabaseServer } from '$lib/supabase/server.js';
 
+/**
+ * GET /api/user-info-check
+ * - LinWeb: user_info의 product_token, product_period만 사용 (고정)
+ * - 쿼리: email, password 필수. 토큰·남은기간 확인용
+ */
 export async function GET({ url }) {
-    try {
-        // URL 파라미터에서 필요한 정보를 가져오고 디코딩
-        const email = decodeURIComponent(url.searchParams.get('email') || '');
-        const password = decodeURIComponent(url.searchParams.get('password') || '');
-        const column = decodeURIComponent(url.searchParams.get('column') || '');
+	try {
+		const email = decodeURIComponent(url.searchParams.get('email') || '').trim().toLowerCase();
+		const password = decodeURIComponent(url.searchParams.get('password') || '');
 
-        if (!email || !password || !column) {
-            return json({
-                success: false,
-                error: '이메일, 비밀번호, 조회할 컬럼명이 필요합니다.'
-            }, { status: 400 });
-        }
+		if (!email || !password) {
+			return json(
+				{ success: false, error: '이메일과 비밀번호가 필요합니다.' },
+				{ status: 400 }
+			);
+		}
 
-        // token_ 접두사를 붙여서 조회
-        const tokenColumn = `token_${column}`;
-        const result = await checkToken(email, password, tokenColumn);
-        if (!result.success) {
-            return json(result, { status: 401 });
-        }
+		const { data: authData, error: authError } = await supabaseServer.auth.signInWithPassword({
+			email,
+			password
+		});
 
-        return json(result);
-    } catch (error) {
-        console.error('API Error:', error);
-        return json({
-            success: false,
-            error: '서버 오류가 발생했습니다.'
-        }, { status: 500 });
-    }
-} 
+		if (authError) {
+			return json({ success: false, error: authError.message }, { status: 401 });
+		}
+
+		const userEmail = authData.user.email ?? email;
+
+		const { data: row, error: fetchError } = await supabaseServer
+			.from('user_info')
+			.select('product_token, product_period')
+			.eq('email', userEmail)
+			.single();
+
+		if (fetchError) {
+			console.error('Check user info error:', fetchError);
+			return json(
+				{ success: false, error: '사용자 정보 조회 중 오류가 발생했습니다.' },
+				{ status: 500 }
+			);
+		}
+
+		return json({
+			success: true,
+			product_token: row?.product_token ?? null,
+			product_period: row?.product_period ? 1 : 0
+		});
+	} catch (error) {
+		console.error('API user-info-check Error:', error);
+		return json(
+			{ success: false, error: '서버 오류가 발생했습니다.' },
+			{ status: 500 }
+		);
+	}
+}

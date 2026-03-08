@@ -37,10 +37,11 @@
 	let memberPassword = '';
 	let memberConfirmPassword = '';
 	let memberReferrerEmail = '';
-	let memberAccountCount = 4; // 생성할 계정 개수 (1~4)
+	let memberAccountCount = 4; // 생성할 계정 개수 (직접 입력)
 	let memberLoading = false;
 	let memberError = null;
 	let memberSuccess = false;
+	let memberCreatedCount = 0; // 실제로 생성된 계정 개수 (성공 메시지용)
 	let createdAccounts = []; // 생성된 계정 이름 목록
 	let showAccountPopup = false; // 계정 생성 팝업 표시 여부
 
@@ -624,10 +625,10 @@
 			const emailPrefix = trimmedEmail;
 			const password = memberPassword.trim();
 
-			// 계정 개수 검증
-			const accountCount = parseInt(String(memberAccountCount || '4').trim());
-			if (isNaN(accountCount) || accountCount < 1 || accountCount > 4) {
-				memberError = '계정 개수는 1~4개 사이여야 합니다.';
+			// 계정 개수 검증 (1~100 등 적정 범위)
+			const accountCount = parseInt(String(memberAccountCount || '1').trim(), 10);
+			if (isNaN(accountCount) || accountCount < 1 || accountCount > 1000) {
+				memberError = '계정 개수는 1~1000 사이의 숫자를 입력해주세요.';
 				return;
 			}
 
@@ -695,6 +696,7 @@
 			// 결과 처리
 			if (successCount === accountCount) {
 				// 모든 계정 생성 성공
+				memberCreatedCount = successCount;
 				memberSuccess = true;
 				memberEmail = '';
 				memberPassword = '';
@@ -1294,7 +1296,7 @@
 							</svg>
 						</div>
 						<div class="ml-3">
-							<p class="text-sm text-green-700">{memberAccountCount}개의 회원 계정이 성공적으로 생성되었습니다.</p>
+							<p class="text-sm text-green-700">{memberCreatedCount}개의 회원 계정이 성공적으로 생성되었습니다.</p>
 						</div>
 					</div>
 				</div>
@@ -1327,17 +1329,17 @@
 					<label for="memberAccountCount" class="block text-sm font-medium text-gray-700 mb-2">
 						생성할 계정 개수 <span class="text-red-500">*</span>
 					</label>
-					<select
+					<input
 						id="memberAccountCount"
+						type="number"
+						min="1"
+						max="1000"
 						bind:value={memberAccountCount}
 						required
 						class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-					>
-						<option value={1}>1개</option>
-						<option value={2}>2개</option>
-						<option value={3}>3개</option>
-						<option value={4}>4개</option>
-					</select>
+						placeholder="1 이상 숫자 입력"
+					/>
+					<p class="mt-1 text-xs text-gray-500">1~1000 사이의 개수를 입력하세요.</p>
 				</div>
 
 				<!-- 상위 이메일은 값 유지, 화면에서는 숨김 -->
@@ -1407,8 +1409,8 @@
 				<div class="ml-3">
 					<h4 class="text-sm font-medium text-blue-800 mb-2">계정 생성 안내</h4>
 					<div class="text-sm text-blue-700 space-y-1">
-						<p>• 이메일 앞부분만 입력하시면 선택한 개수만큼 자동으로 계정이 생성됩니다.</p>
-						<p>• 예시: "test" 입력 + 4개 선택 → <span class="font-mono text-blue-900">test_1@gmail.com</span>, <span class="font-mono text-blue-900">test_2@gmail.com</span>, <span class="font-mono text-blue-900">test_3@gmail.com</span>, <span class="font-mono text-blue-900">test_4@gmail.com</span></p>
+						<p>• 이메일 앞부분만 입력하시면 입력한 개수만큼 자동으로 계정이 생성됩니다.</p>
+						<p>• 예시: "test" 입력 + 개수 4 입력 → <span class="font-mono text-blue-900">test_01@gmail.com</span>, <span class="font-mono text-blue-900">test_02@gmail.com</span>, <span class="font-mono text-blue-900">test_03@gmail.com</span>, <span class="font-mono text-blue-900">test_04@gmail.com</span></p>
 						<p>• 생성된 계정은 모두 동일한 비밀번호와 상위 이메일을 가집니다.</p>
 						<p>• 계정 생성 완료 후 생성된 계정 이름이 팝업으로 표시됩니다.</p>
 					</div>
@@ -1431,7 +1433,7 @@
 				<div class="ml-3">
 					<h4 class="text-sm font-medium text-blue-800 mb-2">생성 방식 추천</h4>
 					<div class="text-sm text-blue-700 space-y-1">
-						<p>• 예시: "test_01" 입력 + 4개 선택 후 생성</p>
+						<p>• 예시: "test_01" 입력 + 개수 4 입력 후 생성</p>
 						<div class="font-mono text-blue-900">
 							<div>test_01_01@gmail.com</div>
 							<div>test_01_02@gmail.com</div>
