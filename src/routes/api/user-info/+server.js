@@ -54,10 +54,21 @@ export async function GET({ url }) {
 				);
 			}
 
+			// product_period_2: DB의 product_period 컬럼값을 YYYYMMDD 숫자만 반환
+			let product_period_2 = null;
+			if (row?.product_period) {
+				const d = new Date(row.product_period);
+				if (!isNaN(d.getTime())) {
+					product_period_2 =
+						`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+				}
+			}
+
 			return json({
 				success: true,
 				product_token: row?.product_token ?? newToken,
-				product_period: row?.product_period ? 1 : 0
+				product_period: row?.product_period ? 1 : 0,
+				product_period_2
 			});
 		}
 
