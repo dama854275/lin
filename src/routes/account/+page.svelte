@@ -13,6 +13,7 @@
 	let error = null;
 	let grantDays = {};
 	let granting = {};
+	let resetting = {};
 	let selectedMembers = new Set();
 	let bulkGrantDays = '';
 	let bulkGranting = false;
@@ -224,6 +225,31 @@
 			error = '상품 기간 적용 중 오류가 발생했습니다.';
 		} finally {
 			granting[memberEmail] = false;
+		}
+	}
+
+	async function resetProductPeriod(memberEmail) {
+		resetting[memberEmail] = true;
+		error = null;
+
+		try {
+			const { error: updateError } = await supabase
+				.from('user_info')
+				.update({ product_period: null })
+				.eq('email', memberEmail);
+
+			if (updateError) {
+				console.error('Reset product_period error:', updateError);
+				error = '상품 기간 초기화 중 오류가 발생했습니다.';
+				return;
+			}
+
+			await fetchReferredMembers();
+		} catch (err) {
+			console.error('Reset product period error:', err);
+			error = '상품 기간 초기화 중 오류가 발생했습니다.';
+		} finally {
+			resetting[memberEmail] = false;
 		}
 	}
 
@@ -793,6 +819,15 @@
 										>
 											{granting[member.email] ? '적용 중...' : '적용'}
 										</button>
+										{#if member.product_period}
+											<button
+												on:click={() => resetProductPeriod(member.email)}
+												disabled={resetting[member.email]}
+												class="px-3 py-1 bg-gray-500 text-white text-base rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+											>
+												{resetting[member.email] ? '초기화 중...' : '초기화'}
+											</button>
+										{/if}
 									</div>
 								</td>
 							</tr>
@@ -814,7 +849,7 @@
 </div>
 
 <!-- 로딩 오버레이 -->
-{#if bulkGranting || Object.values(granting).some((g) => g)}
+{#if bulkGranting || Object.values(granting).some((g) => g) || Object.values(resetting).some((r) => r)}
 	<div
 		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
 		style="pointer-events: all;"
@@ -822,7 +857,7 @@
 		<div class="bg-white rounded-lg p-8 flex flex-col items-center space-y-4 shadow-xl">
 			<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
 			<p class="text-gray-700 font-medium">
-				{bulkGranting ? '일괄 기간 적용 중...' : '기간 적용 중...'}
+				{bulkGranting ? '일괄 기간 적용 중...' : Object.values(resetting).some((r) => r) ? '기간 초기화 중...' : '기간 적용 중...'}
 			</p>
 			<p class="text-sm text-gray-500">잠시만 기다려주세요.</p>
 		</div>
