@@ -46,9 +46,25 @@
 	$: currentUser = $user;
 	$: isLevelLoading = currentUser && currentUserLevel === null;
 
+	// 허용 레벨: 1, 2, 3만 로그인 유지
+	$: isLevelAllowed = currentUserLevel != null && ['1', '2', '3'].includes(String(currentUserLevel).trim());
+
 	// 인증 상태 확인 및 리다이렉트 (reactive statement)
 	$: if (mounted && typeof window !== 'undefined' && !isPublicRoute && !currentUser) {
 		goto('/login');
+	}
+
+	// 로그인은 되어 있으나 level이 1,2,3이 아니거나 null이면 로그아웃 후 로그인 페이지로
+	$: if (
+		mounted &&
+		typeof window !== 'undefined' &&
+		!isPublicRoute &&
+		currentUser &&
+		!isLevelLoading &&
+		currentUserLevel !== null &&
+		!isLevelAllowed
+	) {
+		supabase.auth.signOut().then(() => goto('/login'));
 	}
 
 	// level 3 사용자는 /monitor_control 외 경로 접근 금지 (공용 경로 포함)

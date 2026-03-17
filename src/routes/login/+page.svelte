@@ -18,29 +18,21 @@
 		});
 	});
 
+	const ALLOWED_LEVELS = ['1', '2', '3'];
+
+	function isAllowedLevel(level) {
+		if (level == null || level === '') return false;
+		const s = String(level).trim();
+		return ALLOWED_LEVELS.includes(s);
+	}
+
 	async function handleLogin() {
 		try {
-			// 이메일 공백 제거 및 소문자 변환
 			const trimmedEmail = email.trim().toLowerCase();
 
 			loading = true;
 			error = null;
 
-			// 로그인 시도 전에 user_info 테이블에서 level 확인
-			const { data: userInfo, error: userInfoError } = await supabase
-				.from('user_info')
-				.select('level')
-				.eq('email', trimmedEmail)
-				.single();
-
-			// user_info가 있고 level이 3이면 로그인 차단
-			if (!userInfoError && userInfo && userInfo.level === '3') {
-				error = '해당 계정은 로그인할 수 없습니다.';
-				loading = false;
-				return;
-			}
-
-			// level 체크 통과 후 인증 시도
 			const { data, error: err } = await supabase.auth.signInWithPassword({
 				email: trimmedEmail,
 				password: password.trim()
@@ -55,7 +47,19 @@
 				return;
 			}
 
-			// 로그인 성공 시 홈으로 이동
+			// 로그인 성공 후 user_info.level 확인 (1, 2, 3만 허용)
+			const { data: userInfo } = await supabase
+				.from('user_info')
+				.select('level')
+				.eq('email', trimmedEmail)
+				.maybeSingle();
+
+			if (!isAllowedLevel(userInfo?.level)) {
+				await supabase.auth.signOut();
+				error = '로그인할 수 없습니다. 계정 등급을 확인해주세요.';
+				return;
+			}
+
 			goto('/');
 		} catch (err) {
 			error = err.message || '로그인 중 오류가 발생했습니다.';
