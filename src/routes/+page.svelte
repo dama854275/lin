@@ -584,6 +584,8 @@
 			bulkAccountProgressEmail = trimmedEmail;
 
 			// 서비스 롤(서버)로 생성: 클라이언트 세션이 흔들리지 않고 user_info 누락도 방지
+			// 배포 환경에서 간헐적으로 session_not_found가 발생할 수 있어 먼저 세션을 refresh합니다.
+			await supabase.auth.refreshSession().catch(() => {});
 			const { data: { session: currentSession } } = await supabase.auth.getSession();
 			const accessToken = currentSession?.access_token || '';
 			if (!accessToken) {
@@ -682,6 +684,8 @@
 			accountBulkCreationInProgress.set(true);
 
 			// 서버(서비스 롤) API 호출용 토큰
+			// 배포 환경에서 간헐적으로 session_not_found가 발생할 수 있어 먼저 세션을 refresh합니다.
+			await supabase.auth.refreshSession().catch(() => {});
 			const { data: { session: currentSession } } = await supabase.auth.getSession();
 			const accessToken = currentSession?.access_token || '';
 			if (!accessToken) {
