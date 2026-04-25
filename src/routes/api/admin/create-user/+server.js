@@ -16,6 +16,42 @@ const supabaseUrl = normalizeEnv(PUBLIC_SUPABASE_URL);
 const supabaseAnonKey = normalizeEnv(PUBLIC_SUPABASE_ANON_KEY);
 const supabaseServiceRoleKey = normalizeEnv(SUPABASE_SERVICE_ROLE_KEY);
 
+function getProjectRefFromUrl(url) {
+	try {
+		const u = new URL(url);
+		const host = u.hostname || '';
+		// <ref>.supabase.co
+		return host.split('.')[0] || '';
+	} catch {
+		return '';
+	}
+}
+
+function decodeJwtPayloadUnsafe(token) {
+	// 서명 검증 없이 payload만 디코딩 (디버깅 목적)
+	try {
+		const parts = String(token || '').split('.');
+		if (parts.length < 2) return null;
+		const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+		const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+		const jsonStr = Buffer.from(b64 + pad, 'base64').toString('utf8');
+		return JSON.parse(jsonStr);
+	} catch {
+		return null;
+	}
+}
+
+function getProjectRefFromJwtPayload(payload) {
+	try {
+		const iss = String(payload?.iss || '');
+		// e.g. https://<ref>.supabase.co/auth/v1
+		const m = iss.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
+		return m?.[1] || '';
+	} catch {
+		return '';
+	}
+}
+
 // 토큰 검증(요청자 확인)은 anon 키로 수행 (서비스 롤 키/정책 이슈와 분리)
 const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
 	auth: { autoRefreshToken: false, persistSession: false }
@@ -40,7 +76,23 @@ async function requireAdminOrManager(request) {
 
 	const { data, error } = await supabaseAuth.auth.getUser(token);
 	if (error || !data?.user?.email) {
-		return { ok: false, status: 401, body: { success: false, error: '인증에 실패했습니다.' } };
+		const serverRef = getProjectRefFromUrl(supabaseUrl);
+		const payload = decodeJwtPayloadUnsafe(token);
+		const tokenRef = getProjectRefFromJwtPayload(payload);
+		return {
+			ok: false,
+			status: 401,
+			body: {
+				success: false,
+				error: '인증에 실패했습니다. (토큰 프로젝트와 서버 Supabase 프로젝트가 다를 수 있습니다.)',
+				debug: {
+					serverProjectRef: serverRef || null,
+					tokenProjectRef: tokenRef || null,
+					tokenAud: payload?.aud ?? null,
+					tokenIss: payload?.iss ?? null
+				}
+			}
+		};
 	}
 
 	const email = data.user.email.toLowerCase();
