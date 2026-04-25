@@ -1,6 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
 
+function normalizeEnv(v) {
+	if (!v) return v;
+	const s = String(v).trim();
+	if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+		return s.slice(1, -1).trim();
+	}
+	return s;
+}
+
 // 환경변수 검증
 if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
 	throw new Error(
@@ -9,8 +18,8 @@ if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
 }
 
 export const supabase = createClient(
-	PUBLIC_SUPABASE_URL,
-	PUBLIC_SUPABASE_ANON_KEY,
+	normalizeEnv(PUBLIC_SUPABASE_URL),
+	normalizeEnv(PUBLIC_SUPABASE_ANON_KEY),
 	{
 		auth: {
 			persistSession: true
