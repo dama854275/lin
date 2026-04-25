@@ -17,12 +17,19 @@
 	let selectedMembers = new Set();
 	let bulkGrantDays = '';
 	let bulkGranting = false;
+	let bulkProgress = { done: 0, total: 0, phase: '' };
 	let searchQuery = '';
 	let grantHistory = [];
 	let historyLoading = false;
 	let historyCurrentPage = 1;
 	const historyItemsPerPage = 10;
 	let historyExpanded = false; // 기간 적용 내역 기본 접힌 상태
+
+	function chunkArray(arr, size) {
+		const out = [];
+		for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+		return out;
+	}
 
 	// 검색어로 필터링된 회원 목록
 	$: filteredMembers = searchQuery.trim()
@@ -305,6 +312,7 @@
 		}
 
 		bulkGranting = true;
+		bulkProgress = { done: 0, total: selectedMembers.size, phase: '준비 중' };
 		error = null;
 
 		let successCount = 0;
@@ -313,75 +321,103 @@
 		const savedHistoryIds = []; // 저장된 내역 ID 목록
 
 		try {
-			// 선택된 각 회원에게 일괄 적용
+			// 1) 선택된 회원 정보 한 번에 조회
+			bulkProgress = { done: 0, total: selectedEmails.length, phase: '회원 기간 조회 중' };
+			const { data: membersData, error: membersError } = await supabase
+				.from('user_info')
+				.select('email, product_period')
+				.in('email', selectedEmails)
+				.limit(100000);
+
+			if (membersError) {
+				console.error('Bulk member fetch error:', membersError);
+				error = '회원 정보를 불러오는 중 오류가 발생했습니다.';
+				return;
+			}
+
+			const memberMap = new Map((membersData || []).map((m) => [m.email, m]));
+			const updateRows = [];
+			const historyRows = [];
+			const missingEmails = [];
+
 			for (const memberEmail of selectedEmails) {
-				try {
-					// 해당 회원의 현재 product_period 조회
-					const { data: memberData, error: memberError } = await supabase
-						.from('user_info')
-						.select('product_period')
-						.eq('email', memberEmail)
-						.single();
-
-					if (memberError) {
-						console.error(`Member fetch error for ${memberEmail}:`, memberError);
-						failCount++;
-						continue;
-					}
-
-					let newProductPeriod;
-					const currentPeriod = memberData?.product_period;
-
-					if (currentPeriod) {
-						// 기존 상품 기간이 있으면 추가
-						const existingDate = new Date(currentPeriod);
-						existingDate.setDate(existingDate.getDate() + days);
-						newProductPeriod = existingDate.toISOString();
-					} else {
-						// 기존 상품 기간이 없으면 현재 시간 기준으로 적용
-						const now = new Date();
-						now.setDate(now.getDate() + days);
-						newProductPeriod = now.toISOString();
-					}
-
-					// 회원의 product_period 업데이트
-					const { error: updateError } = await supabase
-						.from('user_info')
-						.update({ product_period: newProductPeriod })
-						.eq('email', memberEmail);
-
-					if (updateError) {
-						console.error(`Update error for ${memberEmail}:`, updateError);
-						failCount++;
-						continue;
-					}
-
-					// 성공한 경우에만 내역 저장
-					successCount++;
-					const { data: historyData, error: historyError } = await supabase
-						.from('period_grant_history')
-						.insert({
-							operator_email: currentUser.email,
-							target_email: memberEmail,
-							days: days,
-							before_product_period: currentPeriod || null,
-							after_product_period: newProductPeriod,
-							before_remaining_day: myRemainingDays.toString(),
-							after_remaining_day: myRemainingDays.toString() // 임시 값, 나중에 업데이트
-						})
-						.select('id')
-						.single();
-
-					if (historyError) {
-						console.error(`Save history error for ${memberEmail}:`, historyError);
-						// 내역 저장 실패는 로그만 남기고 계속 진행
-					} else if (historyData?.id) {
-						savedHistoryIds.push(historyData.id);
-					}
-				} catch (err) {
-					console.error(`Error granting to ${memberEmail}:`, err);
-					failCount++;
+				const m = memberMap.get(memberEmail);
+				if (!m) {
+					missingEmails.push(memberEmail);
+					continue;
 				}
+
+				const currentPeriod = m.product_period;
+				let newProductPeriod;
+				if (currentPeriod) {
+					const existingDate = new Date(currentPeriod);
+					existingDate.setDate(existingDate.getDate() + days);
+					newProductPeriod = existingDate.toISOString();
+				} else {
+					const now = new Date();
+					now.setDate(now.getDate() + days);
+					newProductPeriod = now.toISOString();
+				}
+
+				updateRows.push({ email: memberEmail, product_period: newProductPeriod });
+				historyRows.push({
+					operator_email: currentUser.email,
+					target_email: memberEmail,
+					days: days,
+					before_product_period: currentPeriod || null,
+					after_product_period: newProductPeriod,
+					before_remaining_day: myRemainingDays.toString(),
+					after_remaining_day: myRemainingDays.toString() // 임시 값, 나중에 업데이트
+				});
+			}
+
+			failCount += missingEmails.length;
+
+			// 2) product_period 배치 업데이트 (청크)
+			bulkProgress = { done: 0, total: updateRows.length, phase: '기간 적용(업데이트) 중' };
+			const updateChunks = chunkArray(updateRows, 200);
+			let updatedSoFar = 0;
+			for (const chunk of updateChunks) {
+				const { error: upsertError } = await supabase
+					.from('user_info')
+					.upsert(chunk, { onConflict: 'email' });
+
+				if (upsertError) {
+					console.error('Bulk upsert error:', upsertError);
+					// 해당 청크는 실패 처리
+					failCount += chunk.length;
+				} else {
+					successCount += chunk.length;
+				}
+
+				updatedSoFar += chunk.length;
+				bulkProgress = { done: updatedSoFar, total: updateRows.length, phase: '기간 적용(업데이트) 중' };
+				// UI가 멈춘 것처럼 보이는 현상 완화
+				await new Promise((r) => setTimeout(r, 0));
+			}
+
+			// 3) 내역 배치 저장 (청크) - 업데이트 성공한 대상만 저장하는 게 이상적이지만,
+			//    upsert가 청크 단위로 성공/실패하므로 여기서는 전체 시도 후 저장 실패는 무시한다.
+			bulkProgress = { done: 0, total: historyRows.length, phase: '내역 저장 중' };
+			const historyChunks = chunkArray(historyRows, 200);
+			let historySoFar = 0;
+			for (const chunk of historyChunks) {
+				const { data: historyData, error: historyError } = await supabase
+					.from('period_grant_history')
+					.insert(chunk)
+					.select('id');
+
+				if (historyError) {
+					console.error('Bulk history insert error:', historyError);
+				} else if (Array.isArray(historyData)) {
+					for (const row of historyData) {
+						if (row?.id) savedHistoryIds.push(row.id);
+					}
+				}
+
+				historySoFar += chunk.length;
+				bulkProgress = { done: historySoFar, total: historyRows.length, phase: '내역 저장 중' };
+				await new Promise((r) => setTimeout(r, 0));
 			}
 
 			// 내 remaining_day에서 빼기 (성공한 회원 수만큼만)
@@ -417,6 +453,7 @@
 			await fetchGrantHistory();
 			selectedMembers = new Set(); // Svelte 반응성 트리거
 			bulkGrantDays = '';
+			bulkProgress = { done: 0, total: 0, phase: '' };
 
 			if (failCount > 0) {
 				error = `${successCount}명에게 적용 완료, ${failCount}명 적용 실패`;
@@ -857,7 +894,13 @@
 		<div class="bg-white rounded-lg p-8 flex flex-col items-center space-y-4 shadow-xl">
 			<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
 			<p class="text-gray-700 font-medium">
-				{bulkGranting ? '일괄 기간 적용 중...' : Object.values(resetting).some((r) => r) ? '기간 초기화 중...' : '기간 적용 중...'}
+				{#if bulkGranting}
+					일괄 기간 적용 중... {bulkProgress.phase ? `(${bulkProgress.phase})` : ''} {bulkProgress.total > 0 ? `${bulkProgress.done}/${bulkProgress.total}` : ''}
+				{:else if Object.values(resetting).some((r) => r)}
+					기간 초기화 중...
+				{:else}
+					기간 적용 중...
+				{/if}
 			</p>
 			<p class="text-sm text-gray-500">잠시만 기다려주세요.</p>
 		</div>

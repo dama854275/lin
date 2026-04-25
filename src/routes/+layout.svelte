@@ -10,6 +10,7 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase/client';
 	import { browser } from '$app/environment';
+	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
 
 	let mounted = false;
 	let currentUserLevel = null;
@@ -45,12 +46,20 @@
 	$: currentPath = $page.url.pathname;
 	$: currentUser = $user;
 	$: isLevelLoading = currentUser && currentUserLevel === null;
+	$: bulkAccountCreationBusy = $accountBulkCreationInProgress;
 
 	// 허용 레벨: 1, 2, 3만 로그인 유지
 	$: isLevelAllowed = currentUserLevel != null && ['1', '2', '3'].includes(String(currentUserLevel).trim());
 
 	// 인증 상태 확인 및 리다이렉트 (reactive statement)
-	$: if (mounted && typeof window !== 'undefined' && !isPublicRoute && !currentUser) {
+	// 일괄 계정 생성 중에는 signUp/setSession 사이에 user가 잠깐 바뀌므로 리디렉트하지 않음
+	$: if (
+		mounted &&
+		typeof window !== 'undefined' &&
+		!isPublicRoute &&
+		!bulkAccountCreationBusy &&
+		!currentUser
+	) {
 		goto('/login');
 	}
 
@@ -59,6 +68,7 @@
 		mounted &&
 		typeof window !== 'undefined' &&
 		!isPublicRoute &&
+		!bulkAccountCreationBusy &&
 		currentUser &&
 		!isLevelLoading &&
 		currentUserLevel !== null &&
@@ -71,6 +81,7 @@
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&
+		!bulkAccountCreationBusy &&
 		currentUser &&
 		currentUserLevel === '3' &&
 		currentPath !== '/monitor_control'
@@ -82,10 +93,12 @@
 	// - 공용 경로는 항상 노출
 	// - 로그인 전에는 노출
 	// - 로그인 후 level 로딩 중이면 잠시 노출 안 함 (깜빡임 방지)
-	// - level 3은 /monitor 에서만 노출, 그 외 페이지는 숨김
+	// - level 3은 /monitor_control 에서만 노출, 그 외 페이지는 숨김
+	// - 일괄 계정 생성 중에는 signUp으로 잠깐 level 3으로 보일 수 있으므로 슬롯(안내 오버레이 포함)을 유지
 	$: showContent =
 		isPublicRoute ||
 		!currentUser ||
+		bulkAccountCreationBusy ||
 		(!isLevelLoading &&
 			(currentUserLevel !== '3' || (currentUserLevel === '3' && currentPath === '/monitor_control')));
 </script>

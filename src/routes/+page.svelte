@@ -3,12 +3,13 @@
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
 	import { user } from '$lib/stores/auth';
+	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
+	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 
 	let session = null;
 	let currentUser = null;
 	let currentUserLevel = null; // user_info 테이블의 level (1: 관리자, 2: 매니저, 3: 회원)
-	let isCreatingAccount = false; // 계정 생성 중 플래그
 
 	// 매니저 계정 생성 관련 변수
 	let managerEmail = '';
@@ -25,6 +26,14 @@
 	let programVersionSaving = false;
 	let programVersionError = null;
 	let programVersionSuccess = false;
+
+	// 자동사냥 버전 관리 (level 1 전용) - program_version2
+	let programVersion2 = '';
+	let programVersion2Loaded = ''; // UPDATE 시 WHERE version = ? 에 사용 (version만 있는 테이블용)
+	let programVersion2Loading = false;
+	let programVersion2Saving = false;
+	let programVersion2Error = null;
+	let programVersion2Success = false;
 
 	// 프로그램 업데이트 - set 버킷 파일 업로드 (level 1 전용)
 	let programUpdateFile = null;
@@ -44,12 +53,18 @@
 	let memberCreatedCount = 0; // 실제로 생성된 계정 개수 (성공 메시지용)
 	let createdAccounts = []; // 생성된 계정 이름 목록
 	let showAccountPopup = false; // 계정 생성 팝업 표시 여부
+	/** 매니저/회원 일괄 생성 안내창용 진행 표시 (1부터, total과 함께 사용) */
+	let bulkAccountProgressCurrent = 0;
+	let bulkAccountProgressTotal = 0;
+	let bulkAccountProgressEmail = '';
 
 	// 하위 계정 일괄 생성 시 rate limit 방지: 요청 간 대기 시간(ms)
-	const MEMBER_SIGNUP_DELAY_MS = 1200;
+	const MEMBER_SIGNUP_DELAY_MS = 1400;
 	// rate limit(429) 시 재시도 대기 시간(ms)
 	const MEMBER_SIGNUP_RETRY_DELAY_MS = 5000;
 	const MEMBER_SIGNUP_MAX_RETRIES = 2;
+	// (이전) 클라이언트에서 signUp 후 user_info insert 재시도 로직은
+	// 서비스 롤 서버 API(`/api/admin/create-user`)로 대체됨.
 
 	// 기간 부여 관련 변수
 	let periodUserId = '';
@@ -97,6 +112,10 @@
 	let viewPopupTitle = '';
 	let viewPopupContent = '';
 
+	const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+	// (이전) insertUserInfoWithResilience 제거: 서버 API에서 upsert로 처리
+
 	onMount(async () => {
 		if (browser) {
 			// 현재 세션 확인
@@ -113,7 +132,7 @@
 				// 하위 계정 생성 중(signUp 과정)에는 auth 상태가 잠깐 바뀌며
 				// "상위 이메일" 입력값이 생성되는 이메일로 덮어써지는 문제가 있어,
 				// 생성 중에는 user 구독 로직으로 memberReferrerEmail을 갱신하지 않도록 방지합니다.
-				if (isCreatingAccount) return;
+				if (get(accountBulkCreationInProgress)) return;
 
 				currentUser = u;
 				if (!u) {
@@ -132,6 +151,7 @@
 					if (currentUserLevel === '1') {
 						await fetchPeriodHistory();
 						await fetchProgramVersion();
+						await fetchProgramVersion2();
 					}
 					await fetchNotices();
 					await fetchUpdates();
@@ -189,6 +209,28 @@
 		}
 	}
 
+	async function fetchProgramVersion2() {
+		programVersion2Loading = true;
+		programVersion2Error = null;
+		try {
+			const resp = await fetch('/api/version-check2');
+			const out = await resp.json().catch(() => ({}));
+			if (!resp.ok || !out?.success) {
+				console.error('Fetch program version2 error:', out?.error || `HTTP ${resp.status}`);
+				programVersion2Error = '버전 정보를 불러오지 못했습니다.';
+				return;
+			}
+			const loaded = out?.version ?? '';
+			programVersion2 = loaded;
+			programVersion2Loaded = loaded;
+		} catch (err) {
+			console.error('Error fetching program version2:', err);
+			programVersion2Error = '버전 정보를 불러오지 못했습니다.';
+		} finally {
+			programVersion2Loading = false;
+		}
+	}
+
 	async function handleUpdateProgramVersion() {
 		programVersionSaving = true;
 		programVersionError = null;
@@ -216,6 +258,36 @@
 			programVersionError = err.message || '버전 수정 중 오류가 발생했습니다.';
 		} finally {
 			programVersionSaving = false;
+		}
+	}
+
+	async function handleUpdateProgramVersion2() {
+		programVersion2Saving = true;
+		programVersion2Error = null;
+		programVersion2Success = false;
+		try {
+			const v = (programVersion2 || '').trim();
+			if (!v) {
+				programVersion2Error = '버전을 입력해 주세요.';
+				programVersion2Saving = false;
+				return;
+			}
+			// version 단일 컬럼 테이블: WHERE version = (조회해 둔 값) 으로 한 행 지정
+			const { error } = await supabase
+				.from('program_version2')
+				.update({ version: v })
+				.eq('version', programVersion2Loaded);
+			if (error) throw error;
+			programVersion2Loaded = v;
+			programVersion2Success = true;
+			setTimeout(() => {
+				programVersion2Success = false;
+			}, 3000);
+		} catch (err) {
+			console.error('Update program version2 error:', err);
+			programVersion2Error = err.message || '버전 수정 중 오류가 발생했습니다.';
+		} finally {
+			programVersion2Saving = false;
 		}
 	}
 
@@ -506,51 +578,37 @@
 			managerLoading = true;
 			managerError = null;
 			managerSuccess = false;
-			isCreatingAccount = true; // 계정 생성 시작
+			accountBulkCreationInProgress.set(true);
+			bulkAccountProgressTotal = 1;
+			bulkAccountProgressCurrent = 1;
+			bulkAccountProgressEmail = trimmedEmail;
 
-			// 현재 세션 저장 (계정 생성 후 원래 세션으로 복원하기 위해)
+			// 서비스 롤(서버)로 생성: 클라이언트 세션이 흔들리지 않고 user_info 누락도 방지
 			const { data: { session: currentSession } } = await supabase.auth.getSession();
-			const originalSession = currentSession ? {
-				access_token: currentSession.access_token,
-				refresh_token: currentSession.refresh_token
-			} : null;
-
-			// Supabase Auth로 계정 생성
-			const { data, error: signUpError } = await supabase.auth.signUp({
-				email: trimmedEmail,
-				password: managerPassword.trim()
-			});
-
-			// 즉시 원래 세션으로 복원 (signUp 후 자동 로그인 방지)
-			if (originalSession) {
-				await supabase.auth.setSession(originalSession);
-			} else {
-				await supabase.auth.signOut();
-			}
-
-			if (signUpError) {
-				console.error('Manager signup error:', signUpError);
-				managerError = signUpError.message || '매니저 계정 생성 중 오류가 발생했습니다.';
+			const accessToken = currentSession?.access_token || '';
+			if (!accessToken) {
+				managerError = '현재 로그인 세션을 확인할 수 없습니다. 다시 로그인 후 시도해주세요.';
 				return;
 			}
 
-			// user_info 테이블에 이메일과 level 저장
-			if (data?.user) {
-				const { error: insertError } = await supabase.from('user_info').insert([
-					{
-						email: trimmedEmail,
-						referrer_email: null,
-						product_period: null,
-						product_token: null,
-						level: '2'
-					}
-				]);
+			const resp = await fetch('/api/admin/create-user', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${accessToken}`
+				},
+				body: JSON.stringify({
+					email: trimmedEmail,
+					password: managerPassword.trim(),
+					level: '2',
+					referrer_email: null
+				})
+			});
 
-				if (insertError) {
-					console.error('user_info insert error:', insertError);
-					managerError = '계정은 생성되었지만 user_info 저장 중 오류가 발생했습니다.';
-					return;
-				}
+			const out = await resp.json().catch(() => ({}));
+			if (!resp.ok || !out?.success) {
+				managerError = out?.error || '매니저 계정 생성 중 오류가 발생했습니다.';
+				return;
 			}
 
 			// 성공 메시지 표시
@@ -568,7 +626,10 @@
 			managerError = err.message || '매니저 계정 생성 중 오류가 발생했습니다.';
 		} finally {
 			managerLoading = false;
-			isCreatingAccount = false; // 계정 생성 완료
+			accountBulkCreationInProgress.set(false);
+			bulkAccountProgressCurrent = 0;
+			bulkAccountProgressTotal = 0;
+			bulkAccountProgressEmail = '';
 		}
 	}
 
@@ -618,14 +679,15 @@
 			memberLoading = true;
 			memberError = null;
 			memberSuccess = false;
-			isCreatingAccount = true; // 계정 생성 시작
+			accountBulkCreationInProgress.set(true);
 
-			// 현재 세션 저장 (계정 생성 후 원래 세션으로 복원하기 위해)
+			// 서버(서비스 롤) API 호출용 토큰
 			const { data: { session: currentSession } } = await supabase.auth.getSession();
-			const originalSession = currentSession ? {
-				access_token: currentSession.access_token,
-				refresh_token: currentSession.refresh_token
-			} : null;
+			const accessToken = currentSession?.access_token || '';
+			if (!accessToken) {
+				memberError = '현재 로그인 세션을 확인할 수 없습니다. 다시 로그인 후 시도해주세요.';
+				return;
+			}
 
 			// 이메일 앞부분 추출
 			const emailPrefix = trimmedEmail;
@@ -663,78 +725,55 @@
 			let errorMessages = [];
 			createdAccounts = []; // 생성된 계정 목록 초기화
 
-			const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+			bulkAccountProgressTotal = emailsToActuallyCreate.length;
+			bulkAccountProgressCurrent = 0;
+			bulkAccountProgressEmail = '';
 
-			// 각 이메일로 계정 생성 (이미 존재하는 계정은 요청하지 않음, 요청 간 지연으로 rate limit 완화)
+			// 각 이메일로 계정 생성 (서버 서비스 롤로 생성 -> 세션 깜빡임/리디렉트/누락 방지)
 			for (let i = 0; i < emailsToActuallyCreate.length; i++) {
 				const email = emailsToActuallyCreate[i];
+				bulkAccountProgressCurrent = i + 1;
+				bulkAccountProgressEmail = email;
 
 				// rate limit 방지: 첫 요청이 아닐 때만 이전 요청 후 대기
 				if (i > 0) {
-					await delay(MEMBER_SIGNUP_DELAY_MS);
+					await sleepMs(MEMBER_SIGNUP_DELAY_MS);
 				}
 
 				try {
-					let data = null;
-					let signUpError = null;
-
-					// rate limit(429) 시 일정 시간 대기 후 재시도
+					let lastErrMsg = '';
 					for (let attempt = 0; attempt <= MEMBER_SIGNUP_MAX_RETRIES; attempt++) {
 						if (attempt > 0) {
-							await delay(MEMBER_SIGNUP_RETRY_DELAY_MS);
+							await sleepMs(MEMBER_SIGNUP_RETRY_DELAY_MS);
 						}
-						const result = await supabase.auth.signUp({
-							email: email,
-							password: password
+						const resp = await fetch('/api/admin/create-user', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'Authorization': `Bearer ${accessToken}`
+							},
+							body: JSON.stringify({
+								email,
+								password,
+								level: '3',
+								referrer_email: trimmedReferrerEmail
+							})
 						});
-						data = result.data;
-						signUpError = result.error;
-
-						// 각 계정 생성 후 즉시 원래 세션으로 복원 (signUp 후 자동 로그인 방지)
-						if (originalSession) {
-							await supabase.auth.setSession(originalSession);
-						} else {
-							await supabase.auth.signOut();
+						const out = await resp.json().catch(() => ({}));
+						if (resp.ok && out?.success) {
+							successCount++;
+							createdAccounts.push(email);
+							lastErrMsg = '';
+							break;
 						}
-
-						// rate limit(429) 또는 관련 메시지면 재시도, 아니면 탈출
-						const isRateLimit =
-							signUpError &&
-							(signUpError.status === 429 ||
-								/rate\s*limit|too\s*many\s*request|limit\s*exceeded/i.test(
-									signUpError.message || ''
-								));
-						if (!signUpError || !isRateLimit || attempt === MEMBER_SIGNUP_MAX_RETRIES) {
+						lastErrMsg = out?.error || `HTTP ${resp.status}`;
+						// 429/5xx류면 재시도, 그 외는 중단
+						if (!(resp.status === 429 || (resp.status >= 500 && resp.status <= 599))) {
 							break;
 						}
 					}
-
-					if (signUpError) {
-						console.error(`Member signup error for ${email}:`, signUpError);
-						errorMessages.push(`${email}: ${signUpError.message}`);
-						continue;
-					}
-
-					// user_info 테이블에 이메일, level, referrer_email 저장
-					if (data?.user) {
-						const { error: insertError } = await supabase.from('user_info').insert([
-							{
-								email: email,
-								referrer_email: trimmedReferrerEmail,
-								product_period: null,
-								product_token: null,
-								level: '3'
-							}
-						]);
-
-						if (insertError) {
-							console.error(`user_info insert error for ${email}:`, insertError);
-							errorMessages.push(`${email}: user_info 저장 실패`);
-							continue;
-						}
-
-						successCount++;
-						createdAccounts.push(email); // 생성된 계정 추가
+					if (lastErrMsg) {
+						errorMessages.push(`${email}: ${lastErrMsg}`);
 					}
 				} catch (err) {
 					console.error(`Error creating account for ${email}:`, err);
@@ -787,7 +826,10 @@
 			memberError = err.message || '회원 계정 생성 중 오류가 발생했습니다.';
 		} finally {
 			memberLoading = false;
-			isCreatingAccount = false; // 계정 생성 완료
+			accountBulkCreationInProgress.set(false);
+			bulkAccountProgressCurrent = 0;
+			bulkAccountProgressTotal = 0;
+			bulkAccountProgressEmail = '';
 		}
 	}
 
@@ -1207,6 +1249,7 @@
 		{#if programVersionLoading}
 			<div class="text-gray-500 py-2">로딩 중...</div>
 		{:else}
+			<p class="text-sm font-semibold text-gray-800 mb-2">로테이션 버전</p>
 			<form class="space-y-4" on:submit|preventDefault={handleUpdateProgramVersion}>
 				{#if programVersionError}
 					<div class="bg-red-50 border-l-4 border-red-300 p-4 rounded-lg">
@@ -1248,7 +1291,7 @@
 
 				<div class="max-w-xs">
 					<label for="programVersion" class="block text-sm font-medium text-gray-700 mb-2">
-						현재 프로그램 버전
+						로테이션 버전
 					</label>
 					<input
 						id="programVersion"
@@ -1269,6 +1312,76 @@
 					</button>
 				</div>
 			</form>
+
+			<div class="my-6 border-t border-gray-200"></div>
+
+			{#if programVersion2Loading}
+				<div class="text-gray-500 py-2">로딩 중...</div>
+			{:else}
+				<p class="text-sm font-semibold text-gray-800 mb-2">자동사냥 버전</p>
+				<form class="space-y-4" on:submit|preventDefault={handleUpdateProgramVersion2}>
+					{#if programVersion2Error}
+						<div class="bg-red-50 border-l-4 border-red-300 p-4 rounded-lg">
+							<div class="flex">
+								<div class="flex-shrink-0">
+									<svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+										<path
+											fill-rule="evenodd"
+											d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+								</div>
+								<div class="ml-3">
+									<p class="text-sm text-red-700">{programVersion2Error}</p>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					{#if programVersion2Success}
+						<div class="bg-green-50 border-l-4 border-green-300 p-4 rounded-lg">
+							<div class="flex">
+								<div class="flex-shrink-0">
+									<svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+										<path
+											fill-rule="evenodd"
+											d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+								</div>
+								<div class="ml-3">
+									<p class="text-sm text-green-700">프로그램 버전이 수정되었습니다.</p>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<div class="max-w-xs">
+						<label for="programVersion2" class="block text-sm font-medium text-gray-700 mb-2">
+							자동사냥 버전
+						</label>
+						<input
+							id="programVersion2"
+							type="text"
+							bind:value={programVersion2}
+							class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							placeholder="예: 1.0.0"
+						/>
+					</div>
+
+					<div class="pt-2">
+						<button
+							type="submit"
+							disabled={programVersion2Saving}
+							class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+						>
+							{programVersion2Saving ? '저장 중...' : '버전 수정'}
+						</button>
+					</div>
+				</form>
+			{/if}
 		{/if}
 			</div>
 
@@ -1835,13 +1948,17 @@
 	</div>
 {/if}
 
-<!-- 로딩 오버레이 -->
+<!-- 로딩 오버레이 (계정 생성·기간 처리 중 전역 클릭·탐색 차단, 레이아웃보다 위에 표시) -->
 {#if managerLoading || memberLoading || periodLoading}
 	<div
-		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-		style="pointer-events: all;"
+		class="fixed inset-0 bg-black/60 flex items-center justify-center z-[200]"
+		style="pointer-events: auto;"
+		role="alertdialog"
+		aria-busy="true"
+		aria-live="polite"
+		aria-label="처리 중"
 	>
-		<div class="bg-white rounded-lg p-8 flex flex-col items-center space-y-4 shadow-xl">
+		<div class="bg-white rounded-lg p-8 flex flex-col items-center space-y-4 shadow-xl max-w-sm mx-4 text-center">
 			<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
 			<p class="text-gray-700 font-medium">
 				{managerLoading
@@ -1852,7 +1969,27 @@
 							? '기간 부여 중...'
 							: '기간 차감 중...'}
 			</p>
+			{#if memberLoading && bulkAccountProgressTotal > 0}
+				<p class="text-base text-blue-800 font-semibold">
+					{bulkAccountProgressCurrent} / {bulkAccountProgressTotal}번째 계정 처리 중
+				</p>
+				{#if bulkAccountProgressEmail}
+					<p class="text-xs font-mono text-gray-600 break-all max-w-xs">{bulkAccountProgressEmail}</p>
+				{/if}
+			{:else if managerLoading && bulkAccountProgressTotal > 0}
+				<p class="text-base text-blue-800 font-semibold">
+					{bulkAccountProgressCurrent} / {bulkAccountProgressTotal} — 매니저 계정
+				</p>
+				{#if bulkAccountProgressEmail}
+					<p class="text-xs font-mono text-gray-600 break-all max-w-xs">{bulkAccountProgressEmail}</p>
+				{/if}
+			{/if}
 			<p class="text-sm text-gray-500">잠시만 기다려주세요.</p>
+			{#if managerLoading || memberLoading}
+				<p class="text-xs text-gray-500 leading-relaxed">
+					처리가 끝날 때까지 창을 닫거나 다른 메뉴로 이동하지 마세요. 완료 후에만 계속할 수 있습니다.
+				</p>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -1862,7 +1999,9 @@
 	<div
 		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
 		style="pointer-events: all;"
-		on:click={() => showAccountPopup = false}
+		on:click={(e) => {
+			if (e.target === e.currentTarget) showAccountPopup = false;
+		}}
 		on:keydown={(e) => {
 			if (e.key === 'Escape') {
 				showAccountPopup = false;
@@ -1872,7 +2011,6 @@
 	>
 		<div
 			class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl"
-			on:click|stopPropagation
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="popup-title"
