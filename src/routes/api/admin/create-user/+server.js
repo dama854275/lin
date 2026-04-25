@@ -1,5 +1,30 @@
 import { json } from '@sveltejs/kit';
-import { supabaseServer } from '$lib/supabase/server.js';
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+import { SUPABASE_SERVICE_ROLE_KEY } from '$env/static/private';
+
+function normalizeEnv(v) {
+	if (!v) return v;
+	const s = String(v).trim();
+	if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+		return s.slice(1, -1).trim();
+	}
+	return s;
+}
+
+const supabaseUrl = normalizeEnv(PUBLIC_SUPABASE_URL);
+const supabaseAnonKey = normalizeEnv(PUBLIC_SUPABASE_ANON_KEY);
+const supabaseServiceRoleKey = normalizeEnv(SUPABASE_SERVICE_ROLE_KEY);
+
+// 토큰 검증(요청자 확인)은 anon 키로 수행 (서비스 롤 키/정책 이슈와 분리)
+const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+	auth: { autoRefreshToken: false, persistSession: false }
+});
+
+// 실제 계정 생성/DB 반영은 서비스 롤 키로 수행
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey || supabaseAnonKey, {
+	auth: { autoRefreshToken: false, persistSession: false }
+});
 
 function getBearerToken(request) {
 	const auth = request.headers.get('authorization') || '';
@@ -13,13 +38,13 @@ async function requireAdminOrManager(request) {
 		return { ok: false, status: 401, body: { success: false, error: '인증 토큰이 필요합니다.' } };
 	}
 
-	const { data, error } = await supabaseServer.auth.getUser(token);
+	const { data, error } = await supabaseAuth.auth.getUser(token);
 	if (error || !data?.user?.email) {
 		return { ok: false, status: 401, body: { success: false, error: '인증에 실패했습니다.' } };
 	}
 
 	const email = data.user.email.toLowerCase();
-	const { data: userInfo, error: infoErr } = await supabaseServer
+	const { data: userInfo, error: infoErr } = await supabaseAdmin
 		.from('user_info')
 		.select('level')
 		.eq('email', email)
@@ -73,7 +98,7 @@ export async function POST({ request }) {
 
 		// 1) Auth 사용자 생성 (이미 있으면 계속 진행)
 		let alreadyExists = false;
-		const { data: created, error: createErr } = await supabaseServer.auth.admin.createUser({
+		const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
 			email,
 			password,
 			email_confirm: true
@@ -100,7 +125,7 @@ export async function POST({ request }) {
 			level
 		};
 
-		const { error: upsertErr } = await supabaseServer
+		const { error: upsertErr } = await supabaseAdmin
 			.from('user_info')
 			.upsert([row], { onConflict: 'email' });
 
