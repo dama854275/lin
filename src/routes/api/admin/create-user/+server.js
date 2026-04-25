@@ -52,6 +52,22 @@ function getProjectRefFromJwtPayload(payload) {
 	}
 }
 
+async function getUserByAccessTokenViaHttp(token) {
+	// supabase-js 내부 동작과 동일한 엔드포인트로 직접 검증
+	// GET {SUPABASE_URL}/auth/v1/user  (Authorization: Bearer <jwt>, apikey: <anon key>)
+	const url = `${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`;
+	const resp = await fetch(url, {
+		method: 'GET',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			apikey: supabaseAnonKey,
+			'Content-Type': 'application/json'
+		}
+	});
+	const body = await resp.json().catch(() => ({}));
+	return { ok: resp.ok, status: resp.status, body };
+}
+
 // 토큰 검증(요청자 확인)은 anon 키로 수행 (서비스 롤 키/정책 이슈와 분리)
 const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
 	auth: { autoRefreshToken: false, persistSession: false }
@@ -74,8 +90,25 @@ async function requireAdminOrManager(request) {
 		return { ok: false, status: 401, body: { success: false, error: '인증 토큰이 필요합니다.' } };
 	}
 
+	// 1) supabase-js로 검증 시도
 	const { data, error } = await supabaseAuth.auth.getUser(token);
-	if (error || !data?.user?.email) {
+	let userEmail = data?.user?.email ? String(data.user.email).toLowerCase() : '';
+
+	// 2) 실패 시 HTTP로 한 번 더 시도 (배포 환경/런타임 차이 대응)
+	let httpAttempt = null;
+	if (error || !userEmail) {
+		try {
+			httpAttempt = await getUserByAccessTokenViaHttp(token);
+			const emailFromHttp = httpAttempt?.body?.email || httpAttempt?.body?.user?.email;
+			if (httpAttempt.ok && emailFromHttp) {
+				userEmail = String(emailFromHttp).toLowerCase();
+			}
+		} catch (e) {
+			httpAttempt = { ok: false, status: 0, body: { message: e?.message || String(e) } };
+		}
+	}
+
+	if (!userEmail) {
 		const serverRef = getProjectRefFromUrl(supabaseUrl);
 		const payload = decodeJwtPayloadUnsafe(token);
 		const tokenRef = getProjectRefFromJwtPayload(payload);
@@ -84,18 +117,31 @@ async function requireAdminOrManager(request) {
 			status: 401,
 			body: {
 				success: false,
-				error: '인증에 실패했습니다. (토큰 프로젝트와 서버 Supabase 프로젝트가 다를 수 있습니다.)',
+				error: '인증에 실패했습니다.',
 				debug: {
 					serverProjectRef: serverRef || null,
 					tokenProjectRef: tokenRef || null,
 					tokenAud: payload?.aud ?? null,
 					tokenIss: payload?.iss ?? null
+				},
+				authError: {
+					supabaseJs: error
+						? { message: error.message || String(error), name: error.name || null, status: error.status || null }
+						: null,
+					http: httpAttempt
+						? { ok: !!httpAttempt.ok, status: httpAttempt.status ?? null, body: httpAttempt.body ?? null }
+						: null,
+					env: {
+						hasPublicUrl: !!supabaseUrl,
+						hasAnonKey: !!supabaseAnonKey,
+						hasServiceRoleKey: !!supabaseServiceRoleKey
+					}
 				}
 			}
 		};
 	}
 
-	const email = data.user.email.toLowerCase();
+	const email = userEmail;
 	const { data: userInfo, error: infoErr } = await supabaseAdmin
 		.from('user_info')
 		.select('level')
