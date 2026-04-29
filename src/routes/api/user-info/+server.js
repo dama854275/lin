@@ -1,6 +1,16 @@
 import { json } from '@sveltejs/kit';
-import { supabaseServer } from '$lib/supabase/server.js';
+import { supabaseServer, createSupabaseAuthVerifyClient } from '$lib/supabase/server.js';
 import crypto from 'crypto';
+
+/** Supabase Auth(GoTrue)로 비밀번호 검증 — 서비스 롤 클라이언트와 동일 키 정책, 인스턴스는 호출부에서 격리 */
+async function verifyLoginWithSupabaseAuth(email, password) {
+	const auth = createSupabaseAuthVerifyClient();
+	const { data, error } = await auth.auth.signInWithPassword({ email, password });
+	if (error || !data?.user?.email) {
+		return false;
+	}
+	return data.user.email.trim().toLowerCase() === email;
+}
 
 async function ensureUserExistsByEmail(email) {
 	const { data, error } = await supabaseServer
@@ -27,14 +37,11 @@ function generateToken() {
 /**
  * GET /api/user-info
  * - LinWeb: user_info의 product_token, product_period만 사용 (고정)
- * - 쿼리: email, password 필수. action=update_token 이면 토큰 갱신 후 반환
+ * - 쿼리: email 필수. action=update_token 이면 password 필수(Supabase Auth 로그인 검증 후 토큰 갱신)
  */
 export async function GET({ url }) {
 	try {
 		const email = decodeURIComponent(url.searchParams.get('email') || '').trim().toLowerCase();
-		// 기존 호환: password 파라미터는 유지하되 서버에서는 사용하지 않음
-		// eslint-disable-next-line no-unused-vars
-		const password = decodeURIComponent(url.searchParams.get('password') || '');
 		const action = decodeURIComponent(url.searchParams.get('action') || '');
 
 		if (!email) {
@@ -50,6 +57,21 @@ export async function GET({ url }) {
 		}
 
 		if (action === 'update_token') {
+			const password = decodeURIComponent(url.searchParams.get('password') || '');
+			if (!password) {
+				return json(
+					{ success: false, error: '비밀번호가 필요합니다.' },
+					{ status: 400 }
+				);
+			}
+			const loginOk = await verifyLoginWithSupabaseAuth(email, password);
+			if (!loginOk) {
+				return json(
+					{ success: false, error: '이메일 또는 비밀번호가 올바르지 않습니다.' },
+					{ status: 401 }
+				);
+			}
+
 			const newToken = generateToken();
 			const { data: row, error: updateError } = await supabaseServer
 				.from('user_info')

@@ -21,17 +21,28 @@ if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
 
 const supabaseKey = normalizeEnv(SUPABASE_SERVICE_ROLE_KEY) || normalizeEnv(PUBLIC_SUPABASE_ANON_KEY);
 
+const supabaseClientOptions = {
+	auth: {
+		autoRefreshToken: false,
+		persistSession: false
+	},
+	headers: {
+		'Content-Type': 'application/json',
+		Accept: 'application/json'
+	}
+};
+
 export const supabaseServer = createClient(
-    normalizeEnv(PUBLIC_SUPABASE_URL),
-    supabaseKey,
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
-        },
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-    }
+	normalizeEnv(PUBLIC_SUPABASE_URL),
+	supabaseKey,
+	supabaseClientOptions
 );
+
+/**
+ * Auth 비밀번호 검증 등 — 요청마다 새 인스턴스로 세션 상태가 공유 싱글톤에 섞이지 않게 함.
+ * 키 우선순위는 supabaseServer와 동일(서비스 롤 → anon).
+ */
+export function createSupabaseAuthVerifyClient() {
+	const key = normalizeEnv(SUPABASE_SERVICE_ROLE_KEY) || normalizeEnv(PUBLIC_SUPABASE_ANON_KEY);
+	return createClient(normalizeEnv(PUBLIC_SUPABASE_URL), key, supabaseClientOptions);
+}
