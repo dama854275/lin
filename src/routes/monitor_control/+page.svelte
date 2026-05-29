@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
+	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 
@@ -569,35 +570,34 @@
 		error = null;
 
 		try {
-			let query = supabase
-				.from('user_info')
-				.select('email, api_value, api_at, set_value_2, set_value_3, set_value_4, set_value_5, set_value_6, set_value_7, set_value_8')
-				.limit(100000);
-
-			// 로그인한 이메일의 패턴에 맞는 a_1_**, asdzz_01_** 등 동적 prefix 조회
 			const email = currentUser.email || '';
 			const atIndex = email.indexOf('@');
+			let likePattern;
+
 			if (atIndex !== -1) {
 				const localPart = email.slice(0, atIndex);
 				const domain = email.slice(atIndex + 1);
 				const lastUnderscore = localPart.lastIndexOf('_');
 
 				if (lastUnderscore !== -1) {
-					// asdzz_01_01 -> asdzz_01_%
 					const basePrefix = localPart.slice(0, lastUnderscore + 1);
-					const likePattern = `${basePrefix}%@${domain}`;
-					query = query.like('email', likePattern);
+					likePattern = `${basePrefix}%@${domain}`;
 				} else {
-					// 언더스코어가 없는 경우: 로컬파트 전체를 prefix 로 사용
-					const likePattern = `${localPart}%@${domain}`;
-					query = query.like('email', likePattern);
+					likePattern = `${localPart}%@${domain}`;
 				}
 			} else {
-				// 비정상 이메일 형태인 경우 로그인 이메일 그대로 prefix 로 사용
-				query = query.like('email', `${email}%`);
+				likePattern = `${email}%`;
 			}
 
-			const { data, error: fetchError } = await query;
+			const { data, error: fetchError } = await fetchAllRows(() =>
+				supabase
+					.from('user_info')
+					.select(
+						'email, api_value, api_at, set_value_2, set_value_3, set_value_4, set_value_5, set_value_6, set_value_7, set_value_8'
+					)
+					.like('email', likePattern)
+					.order('email', { ascending: true })
+			);
 
 			if (fetchError) {
 				error = '회원 목록을 불러오는 중 오류가 발생했습니다.';

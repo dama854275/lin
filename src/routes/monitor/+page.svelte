@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
+	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 
@@ -321,12 +322,13 @@
 		error = null;
 
 		try {
-			// 모든 회원을 가져오기 위해 큰 limit 설정 (최대 100,000개)
-			const { data, error: fetchError } = await supabase
-				.from('user_info')
-				.select('email, api_value, api_at')
-				.eq('referrer_email', currentUser.email)
-				.limit(100000);
+			const { data, error: fetchError } = await fetchAllRows(() =>
+				supabase
+					.from('user_info')
+					.select('email, api_value, api_at')
+					.eq('referrer_email', currentUser.email)
+					.order('email', { ascending: true })
+			);
 
 			if (fetchError) {
 				error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
