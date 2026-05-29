@@ -18,6 +18,7 @@
 	let selectedMembers = new Set();
 	let bulkGrantDays = '';
 	let bulkGranting = false;
+	let bulkResetting = false;
 	let bulkProgress = { done: 0, total: 0, phase: '' };
 	let searchQuery = '';
 	let grantHistory = [];
@@ -467,6 +468,58 @@
 		}
 	}
 
+	async function bulkResetProductPeriod() {
+		if (selectedMembers.size === 0) {
+			error = '초기화할 회원을 선택해주세요.';
+			return;
+		}
+
+		bulkResetting = true;
+		bulkProgress = { done: 0, total: selectedMembers.size, phase: '준비 중' };
+		error = null;
+
+		let successCount = 0;
+		let failCount = 0;
+		const selectedEmails = Array.from(selectedMembers);
+
+		try {
+			const emailChunks = chunkArray(selectedEmails, 200);
+			let doneSoFar = 0;
+			bulkProgress = { done: 0, total: selectedEmails.length, phase: '기간 초기화 중' };
+
+			for (const chunk of emailChunks) {
+				const { error: updateError } = await supabase
+					.from('user_info')
+					.update({ product_period: null })
+					.in('email', chunk);
+
+				if (updateError) {
+					console.error('Bulk reset error:', updateError);
+					failCount += chunk.length;
+				} else {
+					successCount += chunk.length;
+				}
+
+				doneSoFar += chunk.length;
+				bulkProgress = { done: doneSoFar, total: selectedEmails.length, phase: '기간 초기화 중' };
+				await new Promise((r) => setTimeout(r, 0));
+			}
+
+			await fetchReferredMembers();
+			selectedMembers = new Set();
+			bulkProgress = { done: 0, total: 0, phase: '' };
+
+			if (failCount > 0) {
+				error = `${successCount}명 초기화 완료, ${failCount}명 초기화 실패`;
+			}
+		} catch (err) {
+			console.error('Bulk reset error:', err);
+			error = '일괄 초기화 중 오류가 발생했습니다.';
+		} finally {
+			bulkResetting = false;
+		}
+	}
+
 	onMount(async () => {
 		if (browser) {
 			user.subscribe(async (u) => {
@@ -776,10 +829,17 @@
 							/>
 							<button
 								on:click={bulkGrantProductPeriod}
-								disabled={bulkGranting || !bulkGrantDays}
+								disabled={bulkGranting || bulkResetting || !bulkGrantDays}
 								class="px-4 py-2 bg-blue-600 text-white text-base rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 							>
 								{bulkGranting ? '적용 중...' : '일괄 적용'}
+							</button>
+							<button
+								on:click={bulkResetProductPeriod}
+								disabled={bulkGranting || bulkResetting}
+								class="px-4 py-2 bg-gray-500 text-white text-base rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+							>
+								{bulkResetting ? '초기화 중...' : '일괄 초기화'}
 							</button>
 							<button
 								on:click={() => {
@@ -887,7 +947,7 @@
 </div>
 
 <!-- 로딩 오버레이 -->
-{#if bulkGranting || Object.values(granting).some((g) => g) || Object.values(resetting).some((r) => r)}
+{#if bulkGranting || bulkResetting || Object.values(granting).some((g) => g) || Object.values(resetting).some((r) => r)}
 	<div
 		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
 		style="pointer-events: all;"
@@ -897,6 +957,8 @@
 			<p class="text-gray-700 font-medium">
 				{#if bulkGranting}
 					일괄 기간 적용 중... {bulkProgress.phase ? `(${bulkProgress.phase})` : ''} {bulkProgress.total > 0 ? `${bulkProgress.done}/${bulkProgress.total}` : ''}
+				{:else if bulkResetting}
+					일괄 기간 초기화 중... {bulkProgress.phase ? `(${bulkProgress.phase})` : ''} {bulkProgress.total > 0 ? `${bulkProgress.done}/${bulkProgress.total}` : ''}
 				{:else if Object.values(resetting).some((r) => r)}
 					기간 초기화 중...
 				{:else}
