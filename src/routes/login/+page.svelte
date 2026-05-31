@@ -3,6 +3,7 @@
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { isZGroupAccount } from '$lib/utils/groupPrefix';
 
 	let email = '';
 	let password = '';
@@ -60,7 +61,11 @@
 				return;
 			}
 
-			goto('/');
+			if (String(userInfo?.level).trim() === '3') {
+				goto(isZGroupAccount(trimmedEmail) ? '/monitor_2' : '/monitor_control');
+			} else {
+				goto('/');
+			}
 		} catch (err) {
 			error = err.message || '로그인 중 오류가 발생했습니다.';
 		} finally {

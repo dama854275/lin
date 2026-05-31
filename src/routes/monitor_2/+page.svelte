@@ -5,7 +5,7 @@
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-	import { isZGroupAccount } from '$lib/utils/groupPrefix';
+	import { getZGroupPrefix } from '$lib/utils/groupPrefix';
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
@@ -304,6 +304,9 @@
 	async function fetchReferredMembers() {
 		if (!currentUser?.email) return;
 
+		const prefix = getZGroupPrefix(currentUser.email);
+		if (!prefix) return;
+
 		loading = true;
 		error = null;
 
@@ -312,7 +315,7 @@
 				supabase
 					.from('user_info')
 					.select('email, api_value, api_at, set_value_1, set_value_2')
-					.eq('referrer_email', currentUser.email)
+					.like('email', `${prefix}%`)
 					.order('email', { ascending: true })
 			);
 
@@ -335,10 +338,9 @@
 				currentUser = u;
 				if (!u) {
 					goto('/login');
-				} else if (isZGroupAccount(u.email)) {
-					goto('/monitor_2');
+				} else if (!getZGroupPrefix(u.email)) {
+					goto('/monitor');
 				} else {
-					// 하위 계정 목록 조회
 					await fetchReferredMembers();
 				}
 			});
@@ -488,7 +490,7 @@
 
 	<div class="bg-white rounded-lg shadow-md p-6">
 		<div class="flex justify-between items-center mb-4">
-			<h3 class="text-2xl font-semibold">하위 계정 목록</h3>
+			<h3 class="text-2xl font-semibold">그룹 계정 목록</h3>
 			<p class="text-sm text-gray-500 text-right">캐릭터가 사냥 중 마을에 도착해 점검을 할때 수집된 정보를 바탕으로 갱신됩니다</p>
 		</div>
 
@@ -502,7 +504,7 @@
 			</div>
 		{:else if referredMembers.length === 0}
 			<div class="text-center py-8">
-				<p class="text-gray-500 text-base">하위 회원이 없습니다.</p>
+				<p class="text-gray-500 text-base">그룹 계정이 없습니다.</p>
 			</div>
 		{:else if filteredMembers.length === 0}
 			<div class="text-center py-8">

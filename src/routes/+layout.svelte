@@ -11,6 +11,7 @@
 	import { supabase } from '$lib/supabase/client';
 	import { browser } from '$app/environment';
 	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
+	import { isZGroupAccount } from '$lib/utils/groupPrefix';
 
 	let mounted = false;
 	let currentUserLevel = null;
@@ -47,6 +48,10 @@
 	$: currentUser = $user;
 	$: isLevelLoading = currentUser && currentUserLevel === null;
 	$: bulkAccountCreationBusy = $accountBulkCreationInProgress;
+	$: monitorPath = currentUser && isZGroupAccount(currentUser.email) ? '/monitor_2' : '/monitor';
+	$: isMonitorActive = currentPath === '/monitor' || currentPath === '/monitor_2';
+	$: isZGroupUser = currentUser && isZGroupAccount(currentUser.email);
+	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : '/monitor_control';
 
 	// 허용 레벨: 1, 2, 3만 로그인 유지
 	$: isLevelAllowed = currentUserLevel != null && ['1', '2', '3'].includes(String(currentUserLevel).trim());
@@ -77,75 +82,71 @@
 		supabase.auth.signOut().then(() => goto('/login'));
 	}
 
-	// level 3 사용자는 /monitor_control 외 경로 접근 금지 (공용 경로 포함)
+	// level 3 사용자는 허용 경로 외 접근 금지 (z_ 계정 → /monitor_2, 그 외 → /monitor_control)
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&
 		!bulkAccountCreationBusy &&
 		currentUser &&
 		currentUserLevel === '3' &&
-		currentPath !== '/monitor_control'
+		currentPath !== level3AllowedPath
 	) {
-		goto('/monitor_control');
+		goto(level3AllowedPath);
 	}
 
 	// 컨텐츠 노출 조건
 	// - 공용 경로는 항상 노출
 	// - 로그인 전에는 노출
 	// - 로그인 후 level 로딩 중이면 잠시 노출 안 함 (깜빡임 방지)
-	// - level 3은 /monitor_control 에서만 노출, 그 외 페이지는 숨김
-	// - 일괄 계정 생성 중에는 signUp으로 잠깐 level 3으로 보일 수 있으므로 슬롯(안내 오버레이 포함)을 유지
+	// - level 3은 허용 경로에서만 노출
 	$: showContent =
 		isPublicRoute ||
 		!currentUser ||
 		bulkAccountCreationBusy ||
 		(!isLevelLoading &&
-			(currentUserLevel !== '3' || (currentUserLevel === '3' && currentPath === '/monitor_control')));
+			(currentUserLevel !== '3' || (currentUserLevel === '3' && currentPath === level3AllowedPath)));
 </script>
 
 {#if !isPublicRoute}
-	<div class="flex min-h-screen bg-gray-50">
-		<!-- 좌측 사이드바 -->
-		<aside class="w-64 bg-white shadow-lg">
-			<div class="p-6">
-				<h1 class="text-2xl font-bold text-gray-800 mb-8">리니지 클래식</h1>
-				<nav class="space-y-2">
+	<div class="min-h-screen bg-gray-50 flex flex-col">
+		<!-- 상단 가로 메뉴 -->
+		<header class="bg-white shadow-md">
+			<div class="flex items-center gap-8 px-6 py-4">
+				<h1 class="text-xl font-bold text-gray-800 whitespace-nowrap">리니지 클래식</h1>
+				<nav class="flex flex-row flex-wrap items-center gap-2">
 					{#if currentUser && currentUserLevel === null}
 						<!-- 로그인 중 등급 로딩 중일 때는 메뉴를 잠시 숨김 (깜빡임 방지) -->
 					{:else if currentUserLevel === '3'}
-						<!-- level 3: 캐릭터 모니터링(모니터 제어)만 표시 -->
 						<a
-							href="/monitor_control"
-							class="block px-4 py-3 rounded-lg transition-colors {currentPath === '/monitor_control' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							href={level3AllowedPath}
+							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === level3AllowedPath ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							캐릭터 모니터링
 						</a>
 					{:else}
-						<!-- 그 외 등급: 기존 메뉴 전체 표시 -->
 						<a
 							href="/"
-							class="block px-4 py-3 rounded-lg transition-colors {currentPath === '/' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === '/' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							계정 생성
 						</a>
 						<a
 							href="/account"
-							class="block px-4 py-3 rounded-lg transition-colors {currentPath === '/account' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === '/account' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							계정 관리
 						</a>
 						<a
-							href="/monitor"
-							class="block px-4 py-3 rounded-lg transition-colors {currentPath === '/monitor' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							href={monitorPath}
+							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {isMonitorActive ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							캐릭터 모니터링
 						</a>
 					{/if}
 				</nav>
 			</div>
-		</aside>
+		</header>
 
-		<!-- 메인 컨텐츠 영역 -->
 		{#if showContent}
 			<main class="flex-1 p-8">
 				<slot />
