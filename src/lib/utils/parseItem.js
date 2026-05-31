@@ -1,5 +1,5 @@
 /** 괄호 숫자와 무관하게 항상 1개로 취급하는 아이템 */
-const SINGLE_COUNT_ITEM_NAMES = new Set(['말하는 두루마리']);
+const SINGLE_COUNT_ITEM_NAMES = new Set(['말하는 두루마리', '출석 편지']);
 
 export function isSingleCountItem(name) {
 	return SINGLE_COUNT_ITEM_NAMES.has((name || '').trim());
