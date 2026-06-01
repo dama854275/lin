@@ -32,6 +32,7 @@
 	let earnedByEmail = {};
 	let earnedLoading = false;
 	let earnedError = null;
+	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
 	$: totalEarnedToday = filteredMembers.reduce(
 		(sum, m) => sum + (Number(earnedByEmail?.[m?.email] ?? 0) || 0),
 		0
@@ -93,11 +94,16 @@
 			earnedByEmail = map;
 		} catch (e) {
 			console.error('earned_total fetch error:', e);
-			earnedError = '오늘 수익 정보를 불러오는 중 오류가 발생했습니다.';
+			earnedError = '수익 정보를 불러오는 중 오류가 발생했습니다.';
 			earnedByEmail = {};
 		} finally {
 			earnedLoading = false;
 		}
+	}
+
+	// 날짜 변경 시(또는 목록 갱신 후) 선택 날짜의 earned_total 재조회
+	$: if (browser && referredMembers && referredMembers.length > 0 && earnedStatDate) {
+		fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
 	}
 
 	// 필터링된 회원 목록 계산
@@ -373,7 +379,7 @@
 			}
 
 			referredMembers = data || [];
-			await fetchEarnedTotalsForMembers(referredMembers);
+			await fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
 		} catch (err) {
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
 		} finally {
@@ -453,7 +459,14 @@
 
 				<!-- 오늘 벌어들인 아데나 합계 -->
 				<div class="bg-violet-50 rounded-lg p-4 w-[400px] self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">오늘 벌어들인 아데나</h4>
+					<div class="flex items-center justify-between gap-3 mb-2">
+						<h4 class="text-base font-bold text-gray-600 whitespace-nowrap">수익(날짜별)</h4>
+						<input
+							type="date"
+							bind:value={earnedStatDate}
+							class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+						/>
+					</div>
 					{#if earnedLoading}
 						<p class="text-3xl font-bold text-violet-700 break-words">로딩 중...</p>
 					{:else if earnedError}
