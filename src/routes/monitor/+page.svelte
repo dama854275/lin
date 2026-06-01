@@ -9,6 +9,7 @@
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
+	import { getKstDateString } from '$lib/utils/parseAdena';
 
 	let currentUser = null;
 	let referredMembers = [];
@@ -26,6 +27,15 @@
 	
 	// 통계 값 유지용
 	let cachedStatistics = { totalMoney: 0, totalStorageMoney: 0, itemCounts: {} };
+
+	// 오늘 벌어들인 아데나(earned_total) - adena_daily 기반
+	let earnedByEmail = {};
+	let earnedLoading = false;
+	let earnedError = null;
+	$: totalEarnedToday = filteredMembers.reduce(
+		(sum, m) => sum + (Number(earnedByEmail?.[m?.email] ?? 0) || 0),
+		0
+	);
 	
 	// 아이템/장비 팝업 상태
 	let itemPopupMember = null;
@@ -49,6 +59,46 @@
 			});
 		} catch (e) {
 			return '-';
+		}
+	}
+
+	async function fetchEarnedTotalsForMembers(members, statDate = getKstDateString()) {
+		const emails = Array.from(
+			new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
+		);
+
+		earnedLoading = true;
+		earnedError = null;
+
+		try {
+			const map = {};
+
+			// Supabase IN 절 길이 제한을 고려해 적당히 청크 처리
+			const chunkSize = 200;
+			for (let i = 0; i < emails.length; i += chunkSize) {
+				const chunk = emails.slice(i, i + chunkSize);
+				const { data, error: qErr } = await supabase
+					.from('adena_daily')
+					.select('email, earned_total')
+					.eq('stat_date', statDate)
+					.in('email', chunk);
+
+				if (qErr) throw qErr;
+
+				(data || []).forEach((row) => {
+					const e = String(row.email || '').trim().toLowerCase();
+					if (!e) return;
+					map[e] = Number(row.earned_total) || 0;
+				});
+			}
+
+			earnedByEmail = map;
+		} catch (e) {
+			console.error('earned_total fetch error:', e);
+			earnedError = '오늘 수익 정보를 불러오는 중 오류가 발생했습니다.';
+			earnedByEmail = {};
+		} finally {
+			earnedLoading = false;
 		}
 	}
 
@@ -322,6 +372,7 @@
 			}
 
 			referredMembers = data || [];
+			await fetchEarnedTotalsForMembers(referredMembers);
 		} catch (err) {
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
 		} finally {
@@ -398,6 +449,18 @@
 				<div class="bg-amber-50 rounded-lg p-4 w-[400px] self-start">
 					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">마지막 보관 아데나</h4>
 					<p class="text-3xl font-bold text-amber-700 break-words">{formatMoney(statistics.totalStorageMoney.toString())}원</p>
+				</div>
+
+				<!-- 오늘 벌어들인 아데나 합계 -->
+				<div class="bg-violet-50 rounded-lg p-4 w-[400px] self-start">
+					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">오늘 벌어들인 아데나</h4>
+					{#if earnedLoading}
+						<p class="text-3xl font-bold text-violet-700 break-words">로딩 중...</p>
+					{:else if earnedError}
+						<p class="text-base text-red-600">{earnedError}</p>
+					{:else}
+						<p class="text-3xl font-bold text-violet-700 break-words">{formatMoney(totalEarnedToday.toString())}원</p>
+					{/if}
 				</div>
 			</div>
 		</div>

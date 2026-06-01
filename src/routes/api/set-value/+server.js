@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { supabaseServer } from '$lib/supabase/server.js';
+import { recordAdenaSnapshotFromSetValue1 } from '$lib/supabase/adenaTracking.js';
 
 async function ensureUserExistsByEmail(email) {
 	const { data, error } = await supabaseServer
@@ -60,7 +61,26 @@ async function setValue(email, password, text, column = 'set_value') {
 		console.error('set-value update error:', updateError);
 		return { ok: false, status: 500, body: { success: false, error: `${col} 저장 중 오류가 발생했습니다.` } };
 	}
-	return { ok: true, body: { success: true, message: `${col}가 반영되었습니다.`, column: col, updated_at: now } };
+
+	let adenaTracking = null;
+	if (col === 'set_value_1') {
+		const snapshotResult = await recordAdenaSnapshotFromSetValue1(supabaseServer, email, value);
+		if (!snapshotResult.ok) {
+			console.error('adena snapshot tracking error:', snapshotResult.error);
+		}
+		adenaTracking = snapshotResult;
+	}
+
+	return {
+		ok: true,
+		body: {
+			success: true,
+			message: `${col}가 반영되었습니다.`,
+			column: col,
+			updated_at: now,
+			adena_tracking: adenaTracking
+		}
+	};
 }
 
 /**

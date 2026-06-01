@@ -1,8 +1,11 @@
 /** 괄호 숫자와 무관하게 항상 1개로 취급하는 아이템 */
-const SINGLE_COUNT_ITEM_NAMES = new Set(['말하는 두루마리', '출석 편지']);
+const SINGLE_COUNT_ITEM_NAMES = new Set(['말하는 두루마리', '등잔']);
 
 export function isSingleCountItem(name) {
-	return SINGLE_COUNT_ITEM_NAMES.has((name || '').trim());
+	const trimmed = (name || '').trim();
+	if (!trimmed) return false;
+	if (SINGLE_COUNT_ITEM_NAMES.has(trimmed)) return true;
+	return trimmed.includes('편지');
 }
 
 /** "순간이동 주문서 (5)" → { name, count } */
@@ -36,7 +39,7 @@ export function getDisplayItems(items) {
 		.filter((item) => item !== '' && item !== '-');
 }
 
-/** 팝업 표시용 문자열 (말하는 두루마리는 항상 (1)로 표시) */
+/** 팝업 표시용 문자열 (단일 개수 아이템은 항상 (1)로 표시) */
 export function formatItemForDisplay(itemStr) {
 	const parsed = parseItemEntry(itemStr);
 	if (!parsed) return null;
