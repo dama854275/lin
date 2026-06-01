@@ -49,6 +49,11 @@
 		return num.toLocaleString('ko-KR');
 	}
 
+	function getMemberEarned(email) {
+		const key = (email || '').trim().toLowerCase();
+		return Number(earnedByEmail?.[key] ?? 0) || 0;
+	}
+
 	function formatDateTime(dateTime) {
 		if (!dateTime) return '-';
 		try {
@@ -611,6 +616,9 @@
 								마지막 보관 아데나
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								오늘 획득 아데나
+							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								장착 장비
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -653,6 +661,13 @@
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{formatMoney(parsed.storageMoney)}
+								</td>
+								<td class="px-4 py-4 text-base text-violet-700 whitespace-nowrap">
+									{#if earnedLoading}
+										<span class="text-gray-400">-</span>
+									{:else}
+										{formatMoney(getMemberEarned(member.email).toString())}
+									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{#if hasDisplayList(parsed.equipment)}
