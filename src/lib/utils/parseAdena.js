@@ -5,6 +5,13 @@ export function getKstDateString(date = new Date()) {
 	return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(date);
 }
 
+/** KST 기준 전날 YYYY-MM-DD */
+export function getKstPreviousDateString(dateStr = getKstDateString()) {
+	const date = new Date(`${dateStr}T12:00:00+09:00`);
+	date.setDate(date.getDate() - 1);
+	return getKstDateString(date);
+}
+
 /** KST 하루의 UTC ISO 범위 */
 export function getKstDayBounds(dateStr = getKstDateString()) {
 	return {

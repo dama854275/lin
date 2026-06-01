@@ -9,7 +9,7 @@
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
-	import { getKstDateString } from '$lib/utils/parseAdena';
+	import { getKstDateString, getKstPreviousDateString } from '$lib/utils/parseAdena';
 
 	let currentUser = null;
 	let referredMembers = [];
@@ -28,8 +28,9 @@
 	// 통계 값 유지용
 	let cachedStatistics = { totalMoney: 0, totalStorageMoney: 0, itemCounts: {} };
 
-	// 오늘 벌어들인 아데나(earned_total) - adena_daily 기반
+	// 오늘/어제 벌어들인 아데나(earned_total) - adena_daily 기반
 	let earnedByEmail = {};
+	let earnedYesterdayByEmail = {};
 	let earnedLoading = false;
 	let earnedError = null;
 	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
@@ -54,6 +55,11 @@
 		return Number(earnedByEmail?.[key] ?? 0) || 0;
 	}
 
+	function getMemberEarnedYesterday(email) {
+		const key = (email || '').trim().toLowerCase();
+		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
+	}
+
 	function formatDateTime(dateTime) {
 		if (!dateTime) return '-';
 		try {
@@ -72,19 +78,21 @@
 		const emails = Array.from(
 			new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
 		);
+		const yesterdayDate = getKstPreviousDateString(statDate);
 
 		earnedLoading = true;
 		earnedError = null;
 
 		try {
-			const map = {};
+			const todayMap = {};
+			const yesterdayMap = {};
 			const chunkSize = 200;
 			for (let i = 0; i < emails.length; i += chunkSize) {
 				const chunk = emails.slice(i, i + chunkSize);
 				const { data, error: qErr } = await supabase
 					.from('adena_daily')
-					.select('email, earned_total')
-					.eq('stat_date', statDate)
+					.select('email, stat_date, earned_total')
+					.in('stat_date', [statDate, yesterdayDate])
 					.in('email', chunk);
 
 				if (qErr) throw qErr;
@@ -92,15 +100,22 @@
 				(data || []).forEach((row) => {
 					const e = String(row.email || '').trim().toLowerCase();
 					if (!e) return;
-					map[e] = Number(row.earned_total) || 0;
+					const amount = Number(row.earned_total) || 0;
+					if (row.stat_date === statDate) {
+						todayMap[e] = amount;
+					} else if (row.stat_date === yesterdayDate) {
+						yesterdayMap[e] = amount;
+					}
 				});
 			}
 
-			earnedByEmail = map;
+			earnedByEmail = todayMap;
+			earnedYesterdayByEmail = yesterdayMap;
 		} catch (e) {
 			console.error('earned_total fetch error:', e);
 			earnedError = '수익 정보를 불러오는 중 오류가 발생했습니다.';
 			earnedByEmail = {};
+			earnedYesterdayByEmail = {};
 		} finally {
 			earnedLoading = false;
 		}
@@ -619,6 +634,9 @@
 								오늘 획득 아데나
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								어제 획득 아데나
+							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								장착 장비
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -667,6 +685,13 @@
 										<span class="text-gray-400">-</span>
 									{:else}
 										{formatMoney(getMemberEarned(member.email).toString())}
+									{/if}
+								</td>
+								<td class="px-4 py-4 text-base text-indigo-700 whitespace-nowrap">
+									{#if earnedLoading}
+										<span class="text-gray-400">-</span>
+									{:else}
+										{formatMoney(getMemberEarnedYesterday(member.email).toString())}
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
