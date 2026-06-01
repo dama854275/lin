@@ -5,7 +5,7 @@ export function isSingleCountItem(name) {
 	const trimmed = (name || '').trim();
 	if (!trimmed) return false;
 	if (SINGLE_COUNT_ITEM_NAMES.has(trimmed)) return true;
-	return trimmed.includes('편지');
+	return trimmed.includes('편지') || trimmed.includes('양초');
 }
 
 /** "순간이동 주문서 (5)" → { name, count } */
