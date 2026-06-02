@@ -79,11 +79,6 @@
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
 
-	function hasMemberEarnedYesterday(email) {
-		const key = (email || '').trim().toLowerCase();
-		return Object.prototype.hasOwnProperty.call(earnedYesterdayByEmail || {}, key);
-	}
-
 	function parseLevelNumber(level) {
 		if (level === null || level === undefined || level === '-') return null;
 		const n = parseInt(String(level).trim(), 10);
@@ -102,7 +97,25 @@
 			cnt += 1;
 		}
 		if (!cnt) return null;
-		return Math.round((sum / cnt) * 10) / 10; // 소수 1자리
+		return Math.round((sum / cnt) * 10) / 10;
+	})();
+
+	$: avgEarnedToday = (() => {
+		const list = filteredMembers || [];
+		const map = earnedByEmail || {};
+		let sum = 0;
+		let cnt = 0;
+		for (const m of list) {
+			const key = (m?.email || '').trim().toLowerCase();
+			if (!key) continue;
+			if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+			const v = Number(map[key]) || 0;
+			if (v <= 0) continue;
+			sum += v;
+			cnt += 1;
+		}
+		if (!cnt) return null;
+		return Math.floor(sum / cnt); // 버림
 	})();
 
 	$: avgEarnedYesterday = (() => {
@@ -540,9 +553,9 @@
 			</div>
 
 			<h4 class="text-lg font-semibold text-gray-800 mb-4">현재 캐릭터 현황</h4>
-			<div class="flex flex-row gap-6 items-start">
+			<div class="flex flex-row flex-nowrap gap-4 items-start w-full min-w-0">
 				<!-- 아이템별 개수 -->
-				<div class="bg-green-50 rounded-lg p-4 w-[420px]">
+				<div class="bg-green-50 rounded-lg p-4 w-[420px] shrink-0">
 					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">아이템별 보유 개수</h4>
 					<div class="max-h-48 overflow-y-scroll item-scrollbar pr-4" style="scrollbar-width: auto; scrollbar-color: #10b981 #d1fae5;">
 						{#if Object.keys(statistics.itemCounts).length === 0}
@@ -560,7 +573,7 @@
 					</div>
 				</div>
 
-				<div class="grid grid-cols-2 gap-6 self-start">
+				<div class="grid grid-cols-2 gap-4 shrink-0 self-start">
 					<!-- 전체 보유 아데나 -->
 					<div class="bg-blue-50 rounded-lg p-4 w-[360px] min-h-[110px]">
 						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 아데나</h4>
@@ -577,22 +590,31 @@
 						</p>
 					</div>
 
-					<!-- 캐릭터 평균 레벨 -->
-					<div class="bg-slate-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">캐릭터 평균 레벨</h4>
-						<p class="text-3xl font-bold text-slate-800 break-words">
-							{#if avgLevel === null}-{:else}{avgLevel}{/if}
+					<!-- 캐릭터 평균 획득 아데나 (오늘) -->
+					<div class="bg-violet-50 rounded-lg p-4 w-[360px] min-h-[110px]">
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 획득 아데나</h4>
+						<p class="text-3xl font-bold text-violet-700 break-words">
+							{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}원{/if}
 						</p>
+						<p class="text-xs text-gray-500 mt-1">오늘 기준 (현재 진행 중)</p>
 					</div>
 
 					<!-- 캐릭터 평균 획득 아데나 (어제) -->
 					<div class="bg-orange-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">캐릭터 평균 획득 아데나</h4>
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 획득 아데나</h4>
 						<p class="text-3xl font-bold text-orange-700 break-words">
 							{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}원{/if}
 						</p>
 						<p class="text-xs text-gray-500 mt-1">어제 기준</p>
 					</div>
+				</div>
+
+				<!-- 캐릭터 평균 레벨 -->
+				<div class="bg-slate-50 rounded-lg p-4 w-[200px] min-h-[110px] shrink-0 self-start">
+					<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">캐릭터 평균 레벨</h4>
+					<p class="text-3xl font-bold text-slate-800 break-words">
+						{#if avgLevel === null}-{:else}{avgLevel}{/if}
+					</p>
 				</div>
 
 			</div>
