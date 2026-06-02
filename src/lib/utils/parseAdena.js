@@ -12,6 +12,31 @@ export function getKstPreviousDateString(dateStr = getKstDateString()) {
 	return getKstDateString(date);
 }
 
+/** KST 기준 최근 N일(오늘 포함), 과거→오늘 순 */
+export function getKstRecentDateStrings(count = 7, endDateStr = getKstDateString()) {
+	const dates = [];
+	let d = endDateStr;
+	for (let i = 0; i < count; i++) {
+		dates.push(d);
+		d = getKstPreviousDateString(d);
+	}
+	return dates.reverse();
+}
+
+/** 차트 라벨: M/D (요일) */
+export function formatKstChartDateLabel(dateStr) {
+	const date = new Date(`${dateStr}T12:00:00+09:00`);
+	const weekday = new Intl.DateTimeFormat('ko-KR', { weekday: 'short', timeZone: 'Asia/Seoul' }).format(
+		date
+	);
+	const md = new Intl.DateTimeFormat('ko-KR', {
+		month: 'numeric',
+		day: 'numeric',
+		timeZone: 'Asia/Seoul'
+	}).format(date);
+	return `${md} (${weekday})`;
+}
+
 /** KST 하루의 UTC ISO 범위 */
 export function getKstDayBounds(dateStr = getKstDateString()) {
 	return {

@@ -9,7 +9,9 @@
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
-	import { getKstDateString, getKstPreviousDateString } from '$lib/utils/parseAdena';
+	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
+	import { fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
+	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 
 	let currentUser = null;
 	let referredMembers = [];
@@ -38,6 +40,23 @@
 		(sum, m) => sum + (Number(earnedByEmail?.[m?.email] ?? 0) || 0),
 		0
 	);
+
+	// 최근 7일 수익 차트
+	let earnedRangeByDate = {};
+	let earnedRangeDates = getKstRecentDateStrings(10);
+	let earnedRangeLoading = false;
+	let earnedRangeError = null;
+
+	$: filteredEmailSet = new Set(
+		(filteredMembers || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean)
+	);
+
+	$: dailyEarningsChartItems = aggregateEarnedChartData(
+		earnedRangeByDate,
+		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(10),
+		filteredEmailSet,
+		getKstDateString()
+	);
 	
 	// 아이템/장비 팝업 상태
 	let itemPopupMember = null;
@@ -59,6 +78,50 @@
 		const key = (email || '').trim().toLowerCase();
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
+
+	function hasMemberEarnedYesterday(email) {
+		const key = (email || '').trim().toLowerCase();
+		return Object.prototype.hasOwnProperty.call(earnedYesterdayByEmail || {}, key);
+	}
+
+	function parseLevelNumber(level) {
+		if (level === null || level === undefined || level === '-') return null;
+		const n = parseInt(String(level).trim(), 10);
+		return Number.isFinite(n) ? n : null;
+	}
+
+	$: avgLevel = (() => {
+		const list = filteredMembers || [];
+		let sum = 0;
+		let cnt = 0;
+		for (const m of list) {
+			const parsed = getMemberDisplay(m);
+			const lv = parseLevelNumber(parsed?.level);
+			if (lv === null || lv === 0) continue;
+			sum += lv;
+			cnt += 1;
+		}
+		if (!cnt) return null;
+		return Math.round((sum / cnt) * 10) / 10; // 소수 1자리
+	})();
+
+	$: avgEarnedYesterday = (() => {
+		const list = filteredMembers || [];
+		const map = earnedYesterdayByEmail || {};
+		let sum = 0;
+		let cnt = 0;
+		for (const m of list) {
+			const key = (m?.email || '').trim().toLowerCase();
+			if (!key) continue;
+			if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+			const v = Number(map[key]) || 0;
+			if (v <= 0) continue;
+			sum += v;
+			cnt += 1;
+		}
+		if (!cnt) return null;
+		return Math.floor(sum / cnt); // 버림
+	})();
 
 	function formatDateTime(dateTime) {
 		if (!dateTime) return '-';
@@ -123,10 +186,32 @@
 		}
 	}
 
+	async function fetchEarnedRangeForMembers(members) {
+		earnedRangeLoading = true;
+		earnedRangeError = null;
+
+		try {
+			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, 10);
+			earnedRangeByDate = byDate;
+			earnedRangeDates = dates;
+		} catch (e) {
+			console.error('earned range fetch error:', e);
+			earnedRangeError = '날짜별 수익 차트를 불러오는 중 오류가 발생했습니다.';
+			earnedRangeByDate = {};
+			earnedRangeDates = getKstRecentDateStrings(10);
+		} finally {
+			earnedRangeLoading = false;
+		}
+	}
+
 	// 날짜 변경 시(또는 목록 갱신 후) 선택 날짜의 earned_total 재조회
 	$: if (browser && referredMembers && referredMembers.length > 0 && earnedStatDate) {
 		// 날짜가 바뀌면 최신 데이터로 갱신
 		fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
+	}
+
+	$: if (browser && referredMembers && referredMembers.length > 0) {
+		fetchEarnedRangeForMembers(referredMembers);
 	}
 
 	// 필터링된 회원 목록 계산
@@ -445,7 +530,16 @@
 	<!-- 통계 섹션 -->
 	{#if !loading && !error && referredMembers.length > 0}
 		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
-			<h3 class="text-2xl font-semibold mb-4">통계</h3>
+			<div class="border-b border-gray-200 pb-6 mb-6">
+				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 아데나 수익</h4>
+				<DailyAdenaEarningsChart
+					items={dailyEarningsChartItems}
+					loading={earnedRangeLoading}
+					error={earnedRangeError}
+				/>
+			</div>
+
+			<h4 class="text-lg font-semibold text-gray-800 mb-4">현재 캐릭터 현황</h4>
 			<div class="flex flex-row gap-6 items-start">
 				<!-- 아이템별 개수 -->
 				<div class="bg-green-50 rounded-lg p-4 w-[420px]">
@@ -466,36 +560,41 @@
 					</div>
 				</div>
 
-				<!-- 전체 보유 아데나 -->
-				<div class="bg-blue-50 rounded-lg p-4 w-[400px] self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 아데나</h4>
-					<p class="text-3xl font-bold text-blue-700 break-words">{formatMoney(statistics.totalMoney.toString())}원</p>
-				</div>
-
-				<!-- 마지막 보관 아데나 합계 -->
-				<div class="bg-amber-50 rounded-lg p-4 w-[400px] self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">마지막 보관 아데나</h4>
-					<p class="text-3xl font-bold text-amber-700 break-words">{formatMoney(statistics.totalStorageMoney.toString())}원</p>
-				</div>
-
-				<!-- 오늘 벌어들인 아데나 합계 -->
-				<div class="bg-violet-50 rounded-lg p-4 w-[400px] self-start">
-					<div class="flex items-center justify-between gap-3 mb-2">
-						<h4 class="text-base font-bold text-gray-600 whitespace-nowrap">수익(날짜별)</h4>
-						<input
-							type="date"
-							bind:value={earnedStatDate}
-							class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-						/>
+				<div class="grid grid-cols-2 gap-6 self-start">
+					<!-- 전체 보유 아데나 -->
+					<div class="bg-blue-50 rounded-lg p-4 w-[360px] min-h-[110px]">
+						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 아데나</h4>
+						<p class="text-3xl font-bold text-blue-700 break-words">
+							{formatMoney(statistics.totalMoney.toString())}원
+						</p>
 					</div>
-					{#if earnedLoading}
-						<p class="text-3xl font-bold text-violet-700 break-words">로딩 중...</p>
-					{:else if earnedError}
-						<p class="text-base text-red-600">{earnedError}</p>
-					{:else}
-						<p class="text-3xl font-bold text-violet-700 break-words">{formatMoney(totalEarnedToday.toString())}원</p>
-					{/if}
+
+					<!-- 마지막 보관 아데나 합계 -->
+					<div class="bg-amber-50 rounded-lg p-4 w-[360px] min-h-[110px]">
+						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">마지막 보관 아데나</h4>
+						<p class="text-3xl font-bold text-amber-700 break-words">
+							{formatMoney(statistics.totalStorageMoney.toString())}원
+						</p>
+					</div>
+
+					<!-- 캐릭터 평균 레벨 -->
+					<div class="bg-slate-50 rounded-lg p-4 w-[360px] min-h-[110px]">
+						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">캐릭터 평균 레벨</h4>
+						<p class="text-3xl font-bold text-slate-800 break-words">
+							{#if avgLevel === null}-{:else}{avgLevel}{/if}
+						</p>
+					</div>
+
+					<!-- 캐릭터 평균 획득 아데나 (어제) -->
+					<div class="bg-orange-50 rounded-lg p-4 w-[360px] min-h-[110px]">
+						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">캐릭터 평균 획득 아데나</h4>
+						<p class="text-3xl font-bold text-orange-700 break-words">
+							{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}원{/if}
+						</p>
+						<p class="text-xs text-gray-500 mt-1">어제 기준</p>
+					</div>
 				</div>
+
 			</div>
 		</div>
 	{/if}
