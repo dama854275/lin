@@ -93,7 +93,7 @@ export function calculateDailyEarned(snapshots) {
 	return earned;
 }
 
-export function summarizeSnapshots(snapshots) {
+export function summarizeSnapshots(snapshots, baselineSnapshot = null) {
 	if (!snapshots || snapshots.length === 0) {
 		return { start_total: null, end_total: null, max_total: null, earned_total: 0, snapshot_count: 0 };
 	}
@@ -108,11 +108,19 @@ export function summarizeSnapshots(snapshots) {
 		if (total > maxTotal) maxTotal = total;
 	}
 
+	// 당일 스냅샷 2건 미만이면 당일 구간만으로는 수익이 0이 됨 → 직전 스냅샷과 비교
+	let earned_total = 0;
+	if (sorted.length >= 2) {
+		earned_total = calculateDailyEarned(sorted);
+	} else if (sorted.length === 1 && baselineSnapshot) {
+		earned_total = calculateDailyEarned([baselineSnapshot, sorted[0]]);
+	}
+
 	return {
 		start_total: sorted[0].total_adena ?? 0,
 		end_total: sorted[sorted.length - 1].total_adena ?? 0,
 		max_total: maxTotal,
-		earned_total: calculateDailyEarned(sorted),
+		earned_total,
 		snapshot_count: sorted.length
 	};
 }

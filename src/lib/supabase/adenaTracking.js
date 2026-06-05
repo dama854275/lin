@@ -24,8 +24,15 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 	}
 
 	if (!hasAdenaChanged(prev, adena)) {
-		// 값이 동일하면 insert는 생략하지만, 디버깅을 위해 계산값은 반환
-		return { ok: true, inserted: false, adena };
+		// 값이 동일하면 insert는 생략하지만 일별 집계는 갱신(계산 로직 변경 시 재반영)
+		const dailyResult = await upsertAdenaDailyForToday(supabase, email);
+		return {
+			ok: dailyResult.ok,
+			inserted: false,
+			adena,
+			daily: dailyResult.summary,
+			error: dailyResult.error
+		};
 	}
 
 	const { error: insertError } = await supabase.from('adena_snapshots').insert([
@@ -67,7 +74,25 @@ export async function upsertAdenaDailyForToday(supabase, email, statDate = getKs
 		return { ok: false, error: snapError.message };
 	}
 
-	const summary = summarizeSnapshots(snapshots || []);
+	let baselineSnapshot = null;
+	if ((snapshots || []).length > 0 && (snapshots || []).length < 2) {
+		const { data: prevSnap, error: prevSnapError } = await supabase
+			.from('adena_snapshots')
+			.select('storage_adena, held_adena, total_adena, recorded_at')
+			.eq('email', email)
+			.lt('recorded_at', start)
+			.order('recorded_at', { ascending: false })
+			.limit(1)
+			.maybeSingle();
+
+		if (prevSnapError) {
+			console.error('adena daily baseline snapshot error:', prevSnapError);
+			return { ok: false, error: prevSnapError.message };
+		}
+		baselineSnapshot = prevSnap;
+	}
+
+	const summary = summarizeSnapshots(snapshots || [], baselineSnapshot);
 
 	const { error: upsertError } = await supabase.from('adena_daily').upsert(
 		{
