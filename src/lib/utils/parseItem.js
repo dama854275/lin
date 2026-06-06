@@ -1,6 +1,20 @@
 /** 괄호 숫자와 무관하게 항상 1개로 취급하는 아이템 */
 const SINGLE_COUNT_ITEM_NAMES = new Set(['말하는 두루마리', '등잔']);
 
+/** 웹 오류로 추정되는 비정상 개수(이상이면 1개로 처리) */
+const SUSPICIOUS_ITEM_COUNT_THRESHOLD = 20000;
+
+export function isSuspiciousItemCount(count) {
+	const n = parseInt(count, 10);
+	return !isNaN(n) && n >= SUSPICIOUS_ITEM_COUNT_THRESHOLD;
+}
+
+function normalizeItemCount(count) {
+	const n = parseInt(count, 10);
+	if (isNaN(n) || n < 0) return 1;
+	return isSuspiciousItemCount(n) ? 1 : n;
+}
+
 export function isSingleCountItem(name) {
 	const trimmed = (name || '').trim();
 	if (!trimmed) return false;
@@ -20,8 +34,7 @@ export function parseItemEntry(itemStr) {
 		if (isSingleCountItem(name)) {
 			return { name, count: 1 };
 		}
-		const count = parseInt(match[2], 10);
-		return { name, count: !isNaN(count) && count >= 0 ? count : 1 };
+		return { name, count: normalizeItemCount(match[2]) };
 	}
 
 	const name = trimmed;
@@ -43,11 +56,12 @@ export function getDisplayItems(items) {
 export function formatItemForDisplay(itemStr) {
 	const parsed = parseItemEntry(itemStr);
 	if (!parsed) return null;
-	if (isSingleCountItem(parsed.name)) {
+	const trimmed = itemStr.trim();
+	const match = trimmed.match(/^(.+?)\s*\((\d+)\)\s*$/);
+	if (match && (isSingleCountItem(parsed.name) || isSuspiciousItemCount(match[2]))) {
 		return `${parsed.name} (1)`;
 	}
-	const trimmed = itemStr.trim();
-	if (/^.+?\s*\(\d+\)\s*$/.test(trimmed)) {
+	if (match) {
 		return trimmed;
 	}
 	return parsed.count > 1 ? `${parsed.name} (${parsed.count})` : parsed.name;
