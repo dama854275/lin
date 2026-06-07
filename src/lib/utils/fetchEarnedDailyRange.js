@@ -2,7 +2,7 @@ import { getKstRecentDateStrings } from '$lib/utils/parseAdena';
 
 const CHUNK_SIZE = 200;
 
-/** referredMembers 기준 최근 N일 adena_daily 조회 → { [stat_date]: { [email]: earned } } */
+/** referredMembers 기준 최근 N일 adena_daily 조회 → { [stat_date]: { [email]: 보관 순증가 } } */
 export async function fetchEarnedDailyRange(supabase, members, dayCount = 7) {
 	const emails = Array.from(
 		new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))

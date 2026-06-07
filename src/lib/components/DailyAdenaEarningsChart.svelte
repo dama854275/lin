@@ -83,7 +83,7 @@
 		</div>
 	{:else if items.length === 0}
 		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
-			<p class="text-gray-500 text-base">표시할 수익 데이터가 없습니다.</p>
+			<p class="text-gray-500 text-base">표시할 보관 아데나 데이터가 없습니다.</p>
 		</div>
 	{:else}
 		<div class="flex flex-col lg:flex-row gap-6 items-start w-full">
@@ -107,7 +107,7 @@
 					height={CHART_HEIGHT}
 					class="inline-block"
 					role="img"
-					aria-label={`최근 ${periodLabel} 아데나 수익 막대 그래프`}
+					aria-label={`최근 ${periodLabel} 보관 아데나 막대 그래프`}
 				>
 					<!-- 범례 -->
 					<g>
@@ -157,7 +157,7 @@
 								height={Math.max(barH, item.total > 0 ? 4 : 0)}
 								rx="6"
 								role="img"
-								aria-label={`${formatChartAxisLabel(item.date)} 수익 ${formatFull(item.total)}원`}
+								aria-label={`${formatChartAxisLabel(item.date)} 보관 아데나 ${formatFull(item.total)}원`}
 								fill={item.isToday ? COLORS.barToday : COLORS.bar}
 								opacity={item.isToday ? 1 : 0.82}
 								stroke={item.isToday ? '#c2410c' : '#1d4ed8'}
@@ -214,7 +214,7 @@
 				{#if items.length > 0}
 					{@const peak = items.reduce((a, b) => (a.total >= b.total ? a : b), items[0])}
 					<div class="w-full rounded-lg bg-amber-50 border border-amber-100 px-4 py-3">
-						<p class="text-xs font-medium text-amber-700 mb-0.5">최고 수익일</p>
+						<p class="text-xs font-medium text-amber-700 mb-0.5">최고 보관 증가일</p>
 						<p class="text-sm font-semibold text-amber-900">{formatKstChartDateLabel(peak.date)}</p>
 						<p class="text-lg font-bold text-amber-950">{formatFull(peak.total)}</p>
 					</div>

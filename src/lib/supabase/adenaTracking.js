@@ -1,12 +1,11 @@
 import {
 	extractAdenaFromSetValue1,
 	getKstDateString,
-	getKstDayBounds,
 	hasAdenaChanged,
-	summarizeSnapshots
+	calculateStorageIncreaseDelta
 } from '$lib/utils/parseAdena';
 
-/** set_value_1 저장 후 스냅샷 + 일별 집계 갱신 */
+/** set_value_1 저장 후 스냅샷 + 일별 누적 갱신 */
 export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue1Text) {
 	const adena = extractAdenaFromSetValue1(setValue1Text);
 
@@ -24,16 +23,10 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 	}
 
 	if (!hasAdenaChanged(prev, adena)) {
-		// 값이 동일하면 insert는 생략하지만 일별 집계는 갱신(계산 로직 변경 시 재반영)
-		const dailyResult = await upsertAdenaDailyForToday(supabase, email);
-		return {
-			ok: dailyResult.ok,
-			inserted: false,
-			adena,
-			daily: dailyResult.summary,
-			error: dailyResult.error
-		};
+		return { ok: true, inserted: false, adena };
 	}
+
+	const prevStorage = prev ? (prev.storage_adena ?? 0) : null;
 
 	const { error: insertError } = await supabase.from('adena_snapshots').insert([
 		{
@@ -49,7 +42,7 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 		return { ok: false, error: insertError.message, adena };
 	}
 
-	const dailyResult = await upsertAdenaDailyForToday(supabase, email);
+	const dailyResult = await incrementAdenaDailyForToday(supabase, email, adena.storage, prevStorage);
 	if (!dailyResult.ok) {
 		return { ...dailyResult, adena };
 	}
@@ -57,42 +50,50 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 	return { ok: true, inserted: true, adena, daily: dailyResult.summary };
 }
 
-/** 오늘(KST) 스냅샷으로 adena_daily upsert */
-export async function upsertAdenaDailyForToday(supabase, email, statDate = getKstDateString()) {
-	const { start, end } = getKstDayBounds(statDate);
+/**
+ * API로 보관값이 들어올 때마다 당일 earned_total 누적
+ * - 당일 최초: API 보관값 그대로 누적 (전날 기록과 비교 안 함)
+ * - 당일 2회차 이후: max(0, 이번 보관 - 직전 보관) 누적
+ */
+export async function incrementAdenaDailyForToday(
+	supabase,
+	email,
+	newStorage,
+	prevStorage,
+	statDate = getKstDateString()
+) {
+	const storage = Number(newStorage) || 0;
 
-	const { data: snapshots, error: snapError } = await supabase
-		.from('adena_snapshots')
-		.select('storage_adena, held_adena, total_adena, recorded_at')
+	const { data: existing, error: fetchError } = await supabase
+		.from('adena_daily')
+		.select('earned_total, start_total, end_total, max_total, snapshot_count')
 		.eq('email', email)
-		.gte('recorded_at', start)
-		.lte('recorded_at', end)
-		.order('recorded_at', { ascending: true });
+		.eq('stat_date', statDate)
+		.maybeSingle();
 
-	if (snapError) {
-		console.error('adena daily snapshot fetch error:', snapError);
-		return { ok: false, error: snapError.message };
+	if (fetchError) {
+		console.error('adena daily fetch error:', fetchError);
+		return { ok: false, error: fetchError.message };
 	}
 
-	let baselineSnapshot = null;
-	if ((snapshots || []).length > 0 && (snapshots || []).length < 2) {
-		const { data: prevSnap, error: prevSnapError } = await supabase
-			.from('adena_snapshots')
-			.select('storage_adena, held_adena, total_adena, recorded_at')
-			.eq('email', email)
-			.lt('recorded_at', start)
-			.order('recorded_at', { ascending: false })
-			.limit(1)
-			.maybeSingle();
+	const isFirstToday = !existing;
+	const delta = isFirstToday ? storage : calculateStorageIncreaseDelta(prevStorage, newStorage);
 
-		if (prevSnapError) {
-			console.error('adena daily baseline snapshot error:', prevSnapError);
-			return { ok: false, error: prevSnapError.message };
-		}
-		baselineSnapshot = prevSnap;
-	}
-
-	const summary = summarizeSnapshots(snapshots || [], baselineSnapshot);
+	const summary = existing
+		? {
+				start_total: existing.start_total ?? 0,
+				end_total: storage,
+				max_total: Math.max(Number(existing.max_total) || 0, storage),
+				earned_total: (Number(existing.earned_total) || 0) + delta,
+				snapshot_count: (Number(existing.snapshot_count) || 0) + 1
+			}
+		: {
+				start_total: storage,
+				end_total: storage,
+				max_total: storage,
+				earned_total: delta,
+				snapshot_count: 1
+			};
 
 	const { error: upsertError } = await supabase.from('adena_daily').upsert(
 		{

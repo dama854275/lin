@@ -30,7 +30,7 @@
 	// 통계 값 유지용
 	let cachedStatistics = { totalMoney: 0, totalStorageMoney: 0, itemCounts: {} };
 
-	// 오늘/어제 벌어들인 아데나(earned_total) - adena_daily 기반
+	// 오늘/어제 보관 아데나 순 증가(earned_total) - adena_daily 기반
 	let earnedByEmail = {};
 	let earnedYesterdayByEmail = {};
 	let earnedLoading = false;
@@ -191,7 +191,7 @@
 			earnedYesterdayByEmail = yesterdayMap;
 		} catch (e) {
 			console.error('earned_total fetch error:', e);
-			earnedError = '수익 정보를 불러오는 중 오류가 발생했습니다.';
+			earnedError = '보관 아데나 정보를 불러오는 중 오류가 발생했습니다.';
 			earnedByEmail = {};
 			earnedYesterdayByEmail = {};
 		} finally {
@@ -209,7 +209,7 @@
 			earnedRangeDates = dates;
 		} catch (e) {
 			console.error('earned range fetch error:', e);
-			earnedRangeError = '날짜별 수익 차트를 불러오는 중 오류가 발생했습니다.';
+			earnedRangeError = '날짜별 보관 아데나 차트를 불러오는 중 오류가 발생했습니다.';
 			earnedRangeByDate = {};
 			earnedRangeDates = getKstRecentDateStrings(10);
 		} finally {
@@ -544,7 +544,7 @@
 	{#if !loading && !error && referredMembers.length > 0}
 		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 			<div class="border-b border-gray-200 pb-6 mb-6">
-				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 아데나 수익</h4>
+				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 보관 아데나</h4>
 				<DailyAdenaEarningsChart
 					items={dailyEarningsChartItems}
 					loading={earnedRangeLoading}
@@ -590,18 +590,18 @@
 						</p>
 					</div>
 
-					<!-- 캐릭터 평균 획득 아데나 (오늘) -->
+					<!-- 캐릭터 평균 보관 아데나 (오늘) -->
 					<div class="bg-violet-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 획득 아데나</h4>
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 보관 아데나</h4>
 						<p class="text-3xl font-bold text-violet-700 break-words">
 							{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}원{/if}
 						</p>
 						<p class="text-xs text-gray-500 mt-1">오늘 기준 (현재 진행 중)</p>
 					</div>
 
-					<!-- 캐릭터 평균 획득 아데나 (어제) -->
+					<!-- 캐릭터 평균 보관 아데나 (어제) -->
 					<div class="bg-orange-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 획득 아데나</h4>
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 보관 아데나</h4>
 						<p class="text-3xl font-bold text-orange-700 break-words">
 							{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}원{/if}
 						</p>
@@ -753,10 +753,10 @@
 								마지막 보관 아데나
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								오늘 획득 아데나
+								오늘 보관 아데나
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								어제 획득 아데나
+								어제 보관 아데나
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								장착 장비
