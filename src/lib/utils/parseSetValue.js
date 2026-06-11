@@ -1,6 +1,6 @@
 /**
  * set_value 문자열 파싱
- * 예: [설정]^g레벨=22^g보관아데나=12^g보유아데나=34
+ * 예: [설정]^g레벨=22^g보관아데나=12^g보유아데나=34^g사냥터=던전 1층
  * 예: [설정]^g장착아이템= 6 크로스 보우^g 4 티셔츠^g보유아이템=순간이동 주문서 (5)^g...
  */
 export function parseSetValue(str) {
@@ -8,6 +8,7 @@ export function parseSetValue(str) {
 		level: null,
 		storageMoney: null,
 		money: null,
+		huntingGround: null,
 		equipment: [],
 		items: []
 	};
@@ -37,6 +38,9 @@ export function parseSetValue(str) {
 				section = null;
 			} else if (key === '보유아데나') {
 				result.money = value || null;
+				section = null;
+			} else if (key === '사냥터') {
+				result.huntingGround = value || null;
 				section = null;
 			} else if (key === '장착아이템') {
 				section = 'equipment';
@@ -69,6 +73,7 @@ export function mergeMemberSetValues(apiParsed, setValue1, setValue2) {
 		level: s1.level ?? (apiParsed.level !== '-' ? apiParsed.level : '-'),
 		money: s1.money ?? (apiParsed.money !== '-' ? apiParsed.money : '-'),
 		storageMoney: s1.storageMoney ?? '-',
+		huntingGround: s1.huntingGround ?? '-',
 		equipment: s2.equipment,
 		items: s2.items
 	};

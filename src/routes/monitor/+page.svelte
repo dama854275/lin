@@ -9,6 +9,7 @@
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
+	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
 	import { fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
@@ -135,20 +136,6 @@
 		if (!cnt) return null;
 		return Math.floor(sum / cnt); // 버림
 	})();
-
-	function formatDateTime(dateTime) {
-		if (!dateTime) return '-';
-		try {
-			const date = new Date(dateTime);
-			if (isNaN(date.getTime())) return '-';
-			return date.toLocaleString('ko-KR', {
-				hour: '2-digit',
-				minute: '2-digit'
-			});
-		} catch (e) {
-			return '-';
-		}
-	}
 
 	async function fetchEarnedTotalsForMembers(members, statDate = getKstDateString()) {
 		const emails = Array.from(
@@ -747,16 +734,19 @@
 								레벨
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								보유 아데나
+								보유
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								마지막 보관 아데나
+								마지막 보관
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								오늘 보관 아데나
+								오늘 보관
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								어제 보관 아데나
+								어제 보관
+							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								사냥터
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								장착 장비
@@ -817,6 +807,9 @@
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+									{parsed.huntingGround && parsed.huntingGround !== '-' ? parsed.huntingGround : '-'}
+								</td>
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{#if hasDisplayList(parsed.equipment)}
 										<button
 											type="button"
@@ -843,7 +836,7 @@
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{formatDateTime(member.api_at)}
+									{formatKstMonitorDateTime(member.api_at)}
 								</td>
 							</tr>
 						{/each}
