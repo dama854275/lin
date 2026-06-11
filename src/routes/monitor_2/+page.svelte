@@ -457,7 +457,12 @@
 	}
 
 	function getMemberDisplay(member) {
-		return mergeMemberSetValues(parseApiValue(member?.api_value), member?.set_value_1, member?.set_value_2);
+		return mergeMemberSetValues(
+			parseApiValue(member?.api_value),
+			member?.set_value_1,
+			member?.set_value_2,
+			member?.set_value_3
+		);
 	}
 
 	async function fetchReferredMembers() {
@@ -473,7 +478,7 @@
 			const { data, error: fetchError } = await fetchAllRows(() =>
 				supabase
 					.from('user_info')
-					.select('email, api_value, api_at, set_value_1, set_value_2')
+					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3')
 					.like('email', `${prefix}%`)
 					.order('email', { ascending: true })
 			);

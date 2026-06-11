@@ -1,7 +1,8 @@
 /**
  * set_value 문자열 파싱
- * 예: [설정]^g레벨=22^g보관아데나=12^g보유아데나=34^g사냥터=던전 1층
- * 예: [설정]^g장착아이템= 6 크로스 보우^g 4 티셔츠^g보유아이템=순간이동 주문서 (5)^g...
+ * 예(set_value_1): [설정]^g레벨=22^g보관아데나=12^g보유아데나=34
+ * 예(set_value_2): [설정]^g장착아이템= 6 크로스 보우^g 4 티셔츠^g보유아이템=순간이동 주문서 (5)^g...
+ * 예(set_value_3): [설정]^g사냥터=글던 1층
  */
 export function parseSetValue(str) {
 	const result = {
@@ -61,10 +62,11 @@ export function parseSetValue(str) {
 	return result;
 }
 
-/** api_value 파싱 결과와 set_value_1/2를 컬럼별로 병합 */
-export function mergeMemberSetValues(apiParsed, setValue1, setValue2) {
+/** api_value 파싱 결과와 set_value_1/2/3를 컬럼별로 병합 */
+export function mergeMemberSetValues(apiParsed, setValue1, setValue2, setValue3) {
 	const s1 = parseSetValue(setValue1);
 	const s2 = parseSetValue(setValue2);
+	const s3 = parseSetValue(setValue3);
 
 	return {
 		pcName: apiParsed.pcName,
@@ -73,7 +75,7 @@ export function mergeMemberSetValues(apiParsed, setValue1, setValue2) {
 		level: s1.level ?? (apiParsed.level !== '-' ? apiParsed.level : '-'),
 		money: s1.money ?? (apiParsed.money !== '-' ? apiParsed.money : '-'),
 		storageMoney: s1.storageMoney ?? '-',
-		huntingGround: s1.huntingGround ?? '-',
+		huntingGround: s3.huntingGround ?? '-',
 		equipment: s2.equipment,
 		items: s2.items
 	};
