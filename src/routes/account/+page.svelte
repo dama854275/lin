@@ -5,6 +5,12 @@
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
+	import {
+		summarizeAccountPeriodStats,
+		isExpiringThisMonth,
+		isExpiringNextMonth,
+		isExcludedFromPeriodStats
+	} from '$lib/utils/accountPeriodStats';
 
 	let currentUser = null;
 	let myUserInfo = null;
@@ -21,6 +27,8 @@
 	let bulkResetting = false;
 	let bulkProgress = { done: 0, total: 0, phase: '' };
 	let searchQuery = '';
+	let showExpiringThisMonthOnly = false;
+	let showExpiringNextMonthOnly = false;
 	let grantHistory = [];
 	let historyLoading = false;
 	let historyCurrentPage = 1;
@@ -33,16 +41,29 @@
 		return out;
 	}
 
-	// 검색어로 필터링된 회원 목록
-	$: filteredMembers = searchQuery.trim()
-		? referredMembers.filter((member) => {
-				const query = searchQuery.trim().toLowerCase();
-				// 공백으로 구분된 여러 검색어 지원
-				const queries = query.split(/\s+/).filter((q) => q.length > 0);
-				// 모든 검색어 중 하나라도 일치하면 표시
-				return queries.some((q) => member.email.toLowerCase().includes(q));
-		  })
-		: referredMembers;
+	// 검색·만료 월 필터 적용 회원 목록
+	$: filteredMembers = referredMembers.filter((member) => {
+		if (searchQuery.trim()) {
+			const query = searchQuery.trim().toLowerCase();
+			const queries = query.split(/\s+/).filter((q) => q.length > 0);
+			if (!queries.some((q) => member.email.toLowerCase().includes(q))) return false;
+		}
+
+		if (showExpiringThisMonthOnly || showExpiringNextMonthOnly) {
+			if (isExcludedFromPeriodStats(member.email)) return false;
+
+			const matchesThisMonth = showExpiringThisMonthOnly && isExpiringThisMonth(member.product_period);
+			const matchesNextMonth = showExpiringNextMonthOnly && isExpiringNextMonth(member.product_period);
+			if (!matchesThisMonth && !matchesNextMonth) return false;
+		}
+
+		return true;
+	});
+
+	$: hasMemberFilter =
+		searchQuery.trim() !== '' || showExpiringThisMonthOnly || showExpiringNextMonthOnly;
+
+	$: periodStats = summarizeAccountPeriodStats(filteredMembers);
 
 	async function fetchMyUserInfo() {
 		if (!currentUser?.email) return;
@@ -593,6 +614,22 @@
 		</div>
 	{/if}
 
+	<!-- 하위 계정 기간 통계 -->
+	<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+		<div class="bg-green-50 border border-green-100 rounded-lg p-4">
+			<p class="text-sm font-medium text-green-700 mb-1">현재 기간 남은 계정</p>
+			<p class="text-3xl font-bold text-green-900">{periodStats.activeCount.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
+		</div>
+		<div class="bg-orange-50 border border-orange-100 rounded-lg p-4">
+			<p class="text-sm font-medium text-orange-700 mb-1">이번 달 만료 계정</p>
+			<p class="text-3xl font-bold text-orange-900">{periodStats.expiringThisMonth.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
+		</div>
+		<div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
+			<p class="text-sm font-medium text-blue-700 mb-1">다음 달 만료 계정</p>
+			<p class="text-3xl font-bold text-blue-900">{periodStats.expiringNextMonth.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
+		</div>
+	</div>
+
 	<!-- 기간 적용 내역 (기본 접힌 상태, 버튼으로 펼치기) -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 		<div class="flex items-center justify-between gap-4">
@@ -800,14 +837,36 @@
 						</button>
 					{/if}
 				</div>
-				{#if searchQuery.trim()}
-					<p class="mt-2 text-base text-gray-600">
-						검색 결과: {filteredMembers.length}명
-						{#if filteredMembers.length !== referredMembers.length}
-							(전체 {referredMembers.length}명 중)
-						{/if}
-					</p>
-				{/if}
+				<div class="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+					{#if hasMemberFilter}
+						<p class="text-base text-gray-600">
+							필터 결과: {filteredMembers.length}명
+							{#if filteredMembers.length !== referredMembers.length}
+								(전체 {referredMembers.length}명 중)
+							{/if}
+						</p>
+					{:else}
+						<div></div>
+					{/if}
+					<div class="flex flex-wrap justify-end gap-4">
+						<label class="flex items-center gap-2 text-base text-gray-700 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								bind:checked={showExpiringThisMonthOnly}
+								class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+							/>
+							이번달 만료 계정만 보기
+						</label>
+						<label class="flex items-center gap-2 text-base text-gray-700 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								bind:checked={showExpiringNextMonthOnly}
+								class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+							/>
+							다음달 만료 계정만 보기
+						</label>
+					</div>
+				</div>
 			</div>
 
 			<!-- 일괄 적용 섹션 -->
@@ -935,7 +994,7 @@
 			</div>
 
 			<div class="mt-4 text-base text-gray-600">
-				{#if searchQuery.trim()}
+				{#if hasMemberFilter}
 					총 {filteredMembers.length}명 표시 (전체 {referredMembers.length}명)
 				{:else}
 					총 {referredMembers.length}명의 회원
