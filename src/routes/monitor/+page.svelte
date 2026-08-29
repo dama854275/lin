@@ -5,7 +5,7 @@
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-	import { isZGroupAccount } from '$lib/utils/groupPrefix';
+	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
@@ -505,6 +505,8 @@
 					goto('/login');
 				} else if (isZGroupAccount(u.email)) {
 					goto('/monitor_2');
+				} else if (isMaGroupAccount(u.email)) {
+					goto('/monitor_ma');
 				} else {
 					// 하위 계정 목록 조회
 					await fetchReferredMembers();

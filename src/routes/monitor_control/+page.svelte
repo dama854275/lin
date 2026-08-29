@@ -5,6 +5,7 @@
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
+	import { isMaGroupAccount } from '$lib/utils/groupPrefix';
 
 	let currentUser = null;
 	let referredMembers = [];
@@ -618,6 +619,8 @@
 				currentUser = u;
 				if (!u) {
 					goto('/login');
+				} else if (isMaGroupAccount(u.email)) {
+					goto('/monitor_ma');
 				} else {
 					// 하위 계정 목록 조회
 					await fetchReferredMembers();

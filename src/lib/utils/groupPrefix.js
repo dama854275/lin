@@ -13,3 +13,9 @@ export function getZGroupPrefix(email) {
 export function isZGroupAccount(email) {
 	return getZGroupPrefix(email) !== null;
 }
+
+export function isMaGroupAccount(email) {
+	if (!email) return false;
+	const id = email.split('@')[0].toLowerCase();
+	return id.startsWith('ma_');
+}

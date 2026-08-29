@@ -5,9 +5,8 @@
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-	import { getZGroupPrefix, isMaGroupAccount } from '$lib/utils/groupPrefix';
-	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
-	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
+	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
+	import { parseMaSetValue } from '$lib/utils/parseMaSetValue';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
@@ -31,7 +30,7 @@
 	// 통계 값 유지용
 	let cachedStatistics = { totalMoney: 0, totalStorageMoney: 0, itemCounts: {} };
 
-	// 오늘/어제 보관 아데나 순 증가(earned_total) - adena_daily 기반
+	// 오늘/어제 보관 메소 순 증가(earned_total) - adena_daily 기반
 	let earnedByEmail = {};
 	let earnedYesterdayByEmail = {};
 	let earnedLoading = false;
@@ -59,10 +58,6 @@
 		getKstDateString()
 	);
 	
-	// 아이템/장비 팝업 상태
-	let itemPopupMember = null;
-	let equipPopupMember = null;
-
 	function formatMoney(money) {
 		if (!money || money === '-') return '-';
 		const num = parseInt(money.replace(/,/g, ''), 10);
@@ -91,7 +86,7 @@
 		let sum = 0;
 		let cnt = 0;
 		for (const m of list) {
-			const parsed = getMemberDisplay(m);
+			const parsed = getMaDisplay(m);
 			const lv = parseLevelNumber(parsed?.level);
 			if (lv === null || lv === 0) continue;
 			sum += lv;
@@ -99,6 +94,21 @@
 		}
 		if (!cnt) return null;
 		return Math.round((sum / cnt) * 10) / 10;
+	})();
+
+	$: avgHeldMeso = (() => {
+		const list = filteredMembers || [];
+		let sum = 0;
+		let cnt = 0;
+		for (const m of list) {
+			const parsed = getMaDisplay(m);
+			const amount = parseMoneyAmount(parsed?.meso);
+			if (amount <= 0) continue;
+			sum += amount;
+			cnt += 1;
+		}
+		if (!cnt) return null;
+		return Math.floor(sum / cnt);
 	})();
 
 	$: avgEarnedToday = (() => {
@@ -149,6 +159,8 @@
 		try {
 			const todayMap = {};
 			const yesterdayMap = {};
+
+			// Supabase IN 절 길이 제한을 고려해 적당히 청크 처리
 			const chunkSize = 200;
 			for (let i = 0; i < emails.length; i += chunkSize) {
 				const chunk = emails.slice(i, i + chunkSize);
@@ -176,7 +188,7 @@
 			earnedYesterdayByEmail = yesterdayMap;
 		} catch (e) {
 			console.error('earned_total fetch error:', e);
-			earnedError = '보관 아데나 정보를 불러오는 중 오류가 발생했습니다.';
+			earnedError = '보관 메소 정보를 불러오는 중 오류가 발생했습니다.';
 			earnedByEmail = {};
 			earnedYesterdayByEmail = {};
 		} finally {
@@ -194,7 +206,7 @@
 			earnedRangeDates = dates;
 		} catch (e) {
 			console.error('earned range fetch error:', e);
-			earnedRangeError = '날짜별 보관 아데나 차트를 불러오는 중 오류가 발생했습니다.';
+			earnedRangeError = '날짜별 보관 메소 차트를 불러오는 중 오류가 발생했습니다.';
 			earnedRangeByDate = {};
 			earnedRangeDates = getKstRecentDateStrings(10);
 		} finally {
@@ -204,6 +216,7 @@
 
 	// 날짜 변경 시(또는 목록 갱신 후) 선택 날짜의 earned_total 재조회
 	$: if (browser && referredMembers && referredMembers.length > 0 && earnedStatDate) {
+		// 날짜가 바뀌면 최신 데이터로 갱신
 		fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
 	}
 
@@ -216,10 +229,11 @@
 		.filter((member) => {
 			if (!member) return false;
 			
-			const parsed = getMemberDisplay(member);
+			const parsed = getMaDisplay(member);
+			const lineage = parseApiValue(member?.api_value);
 			
 			// 중지 상태 필터
-			if (showStoppedOnly && parsed.status !== '중지') {
+			if (showStoppedOnly && lineage.status !== '중지') {
 				return false;
 			}
 
@@ -230,13 +244,13 @@
 					const memberEmail = (member.email || '').toLowerCase();
 					if (!memberEmail.includes(searchTerm)) return false;
 				} else if (searchFilterType === '아이템') {
-					const hasItem = parsed.items && parsed.items.some((item) =>
+					const hasItem = lineage.items && lineage.items.some((item) =>
 						item && item.toLowerCase().includes(searchTerm)
 					);
 					if (!hasItem) return false;
 				} else if (searchFilterType === '서버') {
-					const serverName = parsed.server && parsed.server !== '-'
-						? parsed.server.toLowerCase()
+					const serverName = lineage.server && lineage.server !== '-'
+						? lineage.server.toLowerCase()
 						: '';
 					if (!serverName.includes(searchTerm)) return false;
 				}
@@ -270,14 +284,14 @@
 				}
 			}
 			
-			// 보유 아데나 필터
+			// 보유 메소 필터
 			if (adenFilterValue && adenFilterValue.toString().trim() !== '') {
 				const filterAden = parseInt(adenFilterValue.toString().trim().replace(/[^\d]/g, ''), 10);
 				if (!isNaN(filterAden) && filterAden >= 0) {
 					let memberAden = null;
-					if (parsed.money && parsed.money !== '-') {
+					if (parsed.meso && parsed.meso !== '-') {
 						try {
-							let moneyStr = String(parsed.money).trim();
+							let moneyStr = String(parsed.meso).trim();
 							if (moneyStr !== '' && moneyStr !== '-') {
 								moneyStr = moneyStr.replace(/[^\d]/g, '');
 								if (moneyStr !== '') {
@@ -293,7 +307,7 @@
 					}
 					
 					if (memberAden === null) {
-						return false; // 보유 아데나가 없는 경우 필터에서 제외
+						return false; // 보유 메소가 없는 경우 필터에서 제외
 					}
 					
 					if (adenFilterType === '이상') {
@@ -335,7 +349,6 @@
 	function calculateStatistics() {
 		let totalMoney = 0;
 		let totalStorageMoney = 0;
-		const itemCounts = {};
 
 		if (!filteredMembers || filteredMembers.length === 0) {
 			return {
@@ -348,22 +361,15 @@
 		filteredMembers.forEach((member) => {
 			if (!member) return;
 
-			const parsed = getMemberDisplay(member);
+			const parsed = getMaDisplay(member);
 
-			totalMoney += parseMoneyAmount(parsed.money);
-			totalStorageMoney += parseMoneyAmount(parsed.storageMoney);
-
-			// 아이템별 개수 계산 (괄호 안 숫자를 개수로 합산)
-			const memberItemCounts = aggregateItemCounts(parsed.items);
-			for (const [name, count] of Object.entries(memberItemCounts)) {
-				itemCounts[name] = (itemCounts[name] || 0) + count;
-			}
+			totalMoney += parseMoneyAmount(parsed.meso);
 		});
 
 		return {
 			totalMoney,
 			totalStorageMoney,
-			itemCounts
+			itemCounts: {}
 		};
 	}
 
@@ -456,20 +462,12 @@
 		return result;
 	}
 
-	function getMemberDisplay(member) {
-		return mergeMemberSetValues(
-			parseApiValue(member?.api_value),
-			member?.set_value_1,
-			member?.set_value_2,
-			member?.set_value_3
-		);
+	function getMaDisplay(member) {
+		return parseMaSetValue(member?.set_value_1);
 	}
 
 	async function fetchReferredMembers() {
 		if (!currentUser?.email) return;
-
-		const prefix = getZGroupPrefix(currentUser.email);
-		if (!prefix) return;
 
 		loading = true;
 		error = null;
@@ -479,7 +477,7 @@
 				supabase
 					.from('user_info')
 					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3')
-					.like('email', `${prefix}%`)
+					.eq('referrer_email', currentUser.email)
 					.order('email', { ascending: true })
 			);
 
@@ -503,11 +501,12 @@
 				currentUser = u;
 				if (!u) {
 					goto('/login');
-				} else if (isMaGroupAccount(u.email)) {
-					goto('/monitor_ma');
-				} else if (!getZGroupPrefix(u.email)) {
+				} else if (isZGroupAccount(u.email)) {
+					goto('/monitor_2');
+				} else if (!isMaGroupAccount(u.email)) {
 					goto('/monitor');
 				} else {
+					// 하위 계정 목록 조회
 					await fetchReferredMembers();
 				}
 			});
@@ -537,69 +536,31 @@
 	{#if !loading && !error && referredMembers.length > 0}
 		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 			<div class="border-b border-gray-200 pb-6 mb-6">
-				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 보관 아데나</h4>
+				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 보관 메소</h4>
 				<DailyAdenaEarningsChart
 					items={dailyEarningsChartItems}
 					loading={earnedRangeLoading}
 					error={earnedRangeError}
+					currencyLabel="메소"
 				/>
 			</div>
 
 			<h4 class="text-lg font-semibold text-gray-800 mb-4">현재 캐릭터 현황</h4>
 			<div class="flex flex-row flex-nowrap gap-4 items-start w-full min-w-0">
-				<!-- 아이템별 개수 -->
-				<div class="bg-green-50 rounded-lg p-4 w-[420px] shrink-0">
-					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">아이템별 보유 개수</h4>
-					<div class="max-h-48 overflow-y-scroll item-scrollbar pr-4" style="scrollbar-width: auto; scrollbar-color: #10b981 #d1fae5;">
-						{#if Object.keys(statistics.itemCounts).length === 0}
-							<p class="text-gray-500 text-base">보유 아이템이 없습니다.</p>
-						{:else}
-							<div class="space-y-2">
-								{#each Object.entries(statistics.itemCounts).sort((a, b) => b[1] - a[1]) as [item, count]}
-									<div class="flex justify-between items-center">
-										<span class="text-base text-gray-700 break-words">{item}</span>
-										<span class="text-base font-semibold text-green-700 break-words">{count}개</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
+				<!-- 전체 보유 메소 -->
+				<div class="bg-blue-50 rounded-lg p-4 w-[360px] min-h-[110px] shrink-0 self-start">
+					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 메소</h4>
+					<p class="text-3xl font-bold text-blue-700 break-words">
+						{formatMoney(statistics.totalMoney.toString())}원
+					</p>
 				</div>
 
-				<div class="grid grid-cols-2 gap-4 shrink-0 self-start">
-					<!-- 전체 보유 아데나 -->
-					<div class="bg-blue-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 아데나</h4>
-						<p class="text-3xl font-bold text-blue-700 break-words">
-							{formatMoney(statistics.totalMoney.toString())}원
-						</p>
-					</div>
-
-					<!-- 마지막 보관 아데나 합계 -->
-					<div class="bg-amber-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">마지막 보관 아데나</h4>
-						<p class="text-3xl font-bold text-amber-700 break-words">
-							{formatMoney(statistics.totalStorageMoney.toString())}원
-						</p>
-					</div>
-
-					<!-- 캐릭터 평균 보관 아데나 (오늘) -->
-					<div class="bg-violet-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 보관 아데나</h4>
-						<p class="text-3xl font-bold text-violet-700 break-words">
-							{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}원{/if}
-						</p>
-						<p class="text-xs text-gray-500 mt-1">오늘 기준 (현재 진행 중)</p>
-					</div>
-
-					<!-- 캐릭터 평균 보관 아데나 (어제) -->
-					<div class="bg-orange-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 보관 아데나</h4>
-						<p class="text-3xl font-bold text-orange-700 break-words">
-							{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}원{/if}
-						</p>
-						<p class="text-xs text-gray-500 mt-1">어제 기준</p>
-					</div>
+				<!-- 캐릭터 평균 보유 메소 -->
+				<div class="bg-violet-50 rounded-lg p-4 w-[360px] min-h-[110px] shrink-0 self-start">
+					<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">캐릭터 평균 보유 메소</h4>
+					<p class="text-3xl font-bold text-violet-700 break-words">
+						{#if avgHeldMeso === null}-{:else}{formatMoney(avgHeldMeso.toString())}원{/if}
+					</p>
 				</div>
 
 				<!-- 캐릭터 평균 레벨 -->
@@ -609,7 +570,6 @@
 						{#if avgLevel === null}-{:else}{avgLevel}{/if}
 					</p>
 				</div>
-
 			</div>
 		</div>
 	{/if}
@@ -652,7 +612,7 @@
 			</div>
 		</div>
 		
-		<!-- 두 번째 줄: 레벨, 보유 아데나 -->
+		<!-- 두 번째 줄: 레벨, 보유 메소 -->
 		<div class="flex gap-6 items-center">
 			<!-- 레벨 필터 -->
 			<div class="flex items-center gap-2">
@@ -676,13 +636,13 @@
 			<!-- 구분선 -->
 			<div class="h-6 w-px bg-gray-300"></div>
 			
-			<!-- 보유 아데나 필터 -->
+			<!-- 보유 메소 필터 -->
 			<div class="flex items-center gap-2">
-				<span class="text-base text-gray-600 whitespace-nowrap">보유 아데나:</span>
+				<span class="text-base text-gray-600 whitespace-nowrap">보유 메소:</span>
 				<input
 					type="number"
 					bind:value={adenFilterValue}
-					placeholder="아데나"
+					placeholder="메소"
 					min="0"
 					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				/>
@@ -699,7 +659,7 @@
 
 	<div class="bg-white rounded-lg shadow-md p-6">
 		<div class="flex justify-between items-center mb-4">
-			<h3 class="text-2xl font-semibold">그룹 계정 목록</h3>
+			<h3 class="text-2xl font-semibold">하위 계정 목록</h3>
 			<p class="text-sm text-gray-500 text-right">캐릭터가 사냥 중 마을에 도착해 점검을 할때 수집된 정보를 바탕으로 갱신됩니다</p>
 		</div>
 
@@ -713,7 +673,7 @@
 			</div>
 		{:else if referredMembers.length === 0}
 			<div class="text-center py-8">
-				<p class="text-gray-500 text-base">그룹 계정이 없습니다.</p>
+				<p class="text-gray-500 text-base">하위 회원이 없습니다.</p>
 			</div>
 		{:else if filteredMembers.length === 0}
 			<div class="text-center py-8">
@@ -728,37 +688,31 @@
 								이메일
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								PC 별명
-							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								서버
-							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								상태
-							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								레벨
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								보유
+								직업
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								마지막 보관
+								아바타
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								오늘 보관
+								펫
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								어제 보관
+								묘묘
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								사냥터
+								보유 메소
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								장착 장비
+								오늘 획득 메소
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								보유 아이템
+								어제 획득 메소
+							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								상태
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								갱신 시간
@@ -767,36 +721,29 @@
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
 						{#each filteredMembers as member}
-							{@const parsed = getMemberDisplay(member)}
+							{@const parsed = getMaDisplay(member)}
+							{@const lineage = parseApiValue(member?.api_value)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
 									{formatEmailDisplay(member.email)}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{parsed.pcName}
-								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{parsed.server}
-								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									<div class="flex items-center">
-										{#if parsed.status === '정상'}
-											<span class="w-4 h-4 bg-green-500 rounded-full inline-block flex-shrink-0" title="정상"></span>
-										{:else if parsed.status === '중지'}
-											<span class="w-4 h-4 bg-red-500 rounded-full inline-block flex-shrink-0" title="중지"></span>
-										{:else}
-											<span>{parsed.status}</span>
-										{/if}
-									</div>
-								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{parsed.level}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{formatMoney(parsed.money)}
+									{parsed.job}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{formatMoney(parsed.storageMoney)}
+									{parsed.avatar}
+								</td>
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+									{parsed.pet}
+								</td>
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+									{parsed.myomyo}
+								</td>
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+									{formatMoney(parsed.meso)}
 								</td>
 								<td class="px-4 py-4 text-base text-violet-700 whitespace-nowrap">
 									{#if earnedLoading}
@@ -813,33 +760,15 @@
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{parsed.huntingGround && parsed.huntingGround !== '-' ? parsed.huntingGround : '-'}
-								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{#if hasDisplayList(parsed.equipment)}
-										<button
-											type="button"
-											on:click={() => equipPopupMember = member}
-											class="px-3 py-1.5 bg-purple-100 text-purple-800 rounded text-sm cursor-pointer hover:bg-purple-200 transition-colors whitespace-nowrap"
-										>
-											자세히 보기
-										</button>
-									{:else}
-										<span class="text-gray-400 whitespace-nowrap">확인 대기중</span>
-									{/if}
-								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{#if hasDisplayList(parsed.items)}
-										<button
-											type="button"
-											on:click={() => itemPopupMember = member}
-											class="px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-sm cursor-pointer hover:bg-blue-200 transition-colors whitespace-nowrap"
-										>
-											자세히 보기
-										</button>
-									{:else}
-										<span class="text-gray-400 whitespace-nowrap">확인 대기중</span>
-									{/if}
+									<div class="flex items-center">
+										{#if lineage.status === '정상'}
+											<span class="w-4 h-4 bg-green-500 rounded-full inline-block flex-shrink-0" title="정상"></span>
+										{:else if lineage.status === '중지'}
+											<span class="w-4 h-4 bg-red-500 rounded-full inline-block flex-shrink-0" title="중지"></span>
+										{:else}
+											<span>{lineage.status}</span>
+										{/if}
+									</div>
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{formatKstMonitorDateTime(member.api_at)}
@@ -860,113 +789,3 @@
 	</div>
 </div>
 
-<!-- 장착 장비 팝업 모달 -->
-{#if equipPopupMember}
-	{@const popupEquipment = getDisplayItems(getMemberDisplay(equipPopupMember).equipment)}
-	<div
-		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-		on:click={() => equipPopupMember = null}
-		on:keydown={(e) => e.key === 'Escape' && (equipPopupMember = null)}
-		role="dialog"
-		tabindex="-1"
-	>
-		<div
-			class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto"
-			on:click|stopPropagation
-		>
-			<div class="flex justify-between items-center mb-4">
-				<h3 class="text-xl font-semibold text-gray-900">장착 장비 목록</h3>
-				<button
-					type="button"
-					on:click={() => equipPopupMember = null}
-					class="text-gray-400 hover:text-gray-600 transition-colors"
-					aria-label="닫기"
-				>
-					<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-					</svg>
-				</button>
-			</div>
-			<div class="flex flex-wrap gap-2">
-				{#if popupEquipment.length > 0}
-					{#each popupEquipment as equip}
-						<span
-							class="inline-block px-3 py-1.5 bg-purple-100 text-purple-800 rounded text-base break-words"
-						>
-							{equip}
-						</span>
-					{/each}
-				{:else}
-					<p class="text-gray-500 text-base">장착 장비가 없습니다.</p>
-				{/if}
-			</div>
-		</div>
-	</div>
-{/if}
-
-<!-- 아이템 팝업 모달 -->
-{#if itemPopupMember}
-	{@const popupItems = getPopupDisplayItems(getMemberDisplay(itemPopupMember).items)}
-	<div
-		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-		on:click={() => itemPopupMember = null}
-		on:keydown={(e) => e.key === 'Escape' && (itemPopupMember = null)}
-		role="dialog"
-		tabindex="-1"
-	>
-		<div
-			class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto"
-			on:click|stopPropagation
-		>
-			<div class="flex justify-between items-center mb-4">
-				<h3 class="text-xl font-semibold text-gray-900">보유 아이템 목록</h3>
-				<button
-					type="button"
-					on:click={() => itemPopupMember = null}
-					class="text-gray-400 hover:text-gray-600 transition-colors"
-					aria-label="닫기"
-				>
-					<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-					</svg>
-				</button>
-			</div>
-			<div class="flex flex-wrap gap-2">
-				{#if popupItems.length > 0}
-					{#each popupItems as item}
-						<span
-							class="inline-block px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-base break-words"
-						>
-							{item}
-						</span>
-					{/each}
-				{:else}
-					<p class="text-gray-500 text-base">보유 아이템이 없습니다.</p>
-				{/if}
-			</div>
-		</div>
-	</div>
-{/if}
-
-<style>
-	.item-scrollbar::-webkit-scrollbar {
-		width: 12px;
-		background-color: #d1fae5;
-		border-radius: 6px;
-	}
-
-	.item-scrollbar::-webkit-scrollbar-thumb {
-		background-color: #10b981;
-		border-radius: 6px;
-		border: 2px solid #d1fae5;
-	}
-
-	.item-scrollbar::-webkit-scrollbar-thumb:hover {
-		background-color: #059669;
-	}
-
-	.item-scrollbar::-webkit-scrollbar-track {
-		background-color: #d1fae5;
-		border-radius: 6px;
-	}
-</style>

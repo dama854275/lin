@@ -11,7 +11,7 @@
 	import { supabase } from '$lib/supabase/client';
 	import { browser } from '$app/environment';
 	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
-	import { isZGroupAccount } from '$lib/utils/groupPrefix';
+	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
 
 	let mounted = false;
 	let currentUserLevel = null;
@@ -48,10 +48,15 @@
 	$: currentUser = $user;
 	$: isLevelLoading = currentUser && currentUserLevel === null;
 	$: bulkAccountCreationBusy = $accountBulkCreationInProgress;
-	$: monitorPath = currentUser && isZGroupAccount(currentUser.email) ? '/monitor_2' : '/monitor';
-	$: isMonitorActive = currentPath === '/monitor' || currentPath === '/monitor_2';
+	$: monitorPath = currentUser && isZGroupAccount(currentUser.email)
+		? '/monitor_2'
+		: currentUser && isMaGroupAccount(currentUser.email)
+			? '/monitor_ma'
+			: '/monitor';
+	$: isMonitorActive = currentPath === '/monitor' || currentPath === '/monitor_2' || currentPath === '/monitor_ma';
 	$: isZGroupUser = currentUser && isZGroupAccount(currentUser.email);
-	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : '/monitor_control';
+	$: isMaGroupUser = currentUser && isMaGroupAccount(currentUser.email);
+	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : isMaGroupUser ? '/monitor_ma' : '/monitor_control';
 
 	// 허용 레벨: 1, 2, 3만 로그인 유지
 	$: isLevelAllowed = currentUserLevel != null && ['1', '2', '3'].includes(String(currentUserLevel).trim());
@@ -82,7 +87,7 @@
 		supabase.auth.signOut().then(() => goto('/login'));
 	}
 
-	// level 3 사용자는 허용 경로 외 접근 금지 (z_ 계정 → /monitor_2, 그 외 → /monitor_control)
+	// level 3 사용자는 허용 경로 외 접근 금지 (z_ → /monitor_2, ma_ → /monitor_ma, 그 외 → /monitor_control)
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&

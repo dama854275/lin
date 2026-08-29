@@ -5,6 +5,7 @@
 	export let items = [];
 	export let loading = false;
 	export let error = null;
+	export let currencyLabel = '아데나';
 
 	const CHART_HEIGHT = 220;
 	const PADDING = { top: 28, right: 12, bottom: 36, left: 12 };
@@ -83,7 +84,7 @@
 		</div>
 	{:else if items.length === 0}
 		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
-			<p class="text-gray-500 text-base">표시할 보관 아데나 데이터가 없습니다.</p>
+			<p class="text-gray-500 text-base">표시할 보관 {currencyLabel} 데이터가 없습니다.</p>
 		</div>
 	{:else}
 		<div class="flex flex-col lg:flex-row gap-6 items-start w-full">
@@ -107,7 +108,7 @@
 					height={CHART_HEIGHT}
 					class="inline-block"
 					role="img"
-					aria-label={`최근 ${periodLabel} 보관 아데나 막대 그래프`}
+					aria-label={`최근 ${periodLabel} 보관 ${currencyLabel} 막대 그래프`}
 				>
 					<!-- 범례 -->
 					<g>
@@ -157,7 +158,7 @@
 								height={Math.max(barH, item.total > 0 ? 4 : 0)}
 								rx="6"
 								role="img"
-								aria-label={`${formatChartAxisLabel(item.date)} 보관 아데나 ${formatFull(item.total)}원`}
+								aria-label={`${formatChartAxisLabel(item.date)} 보관 ${currencyLabel} ${formatFull(item.total)}원`}
 								fill={item.isToday ? COLORS.barToday : COLORS.bar}
 								opacity={item.isToday ? 1 : 0.82}
 								stroke={item.isToday ? '#c2410c' : '#1d4ed8'}

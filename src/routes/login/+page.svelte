@@ -3,7 +3,7 @@
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { isZGroupAccount } from '$lib/utils/groupPrefix';
+	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
 
 	let email = '';
 	let password = '';
@@ -62,7 +62,13 @@
 			}
 
 			if (String(userInfo?.level).trim() === '3') {
-				goto(isZGroupAccount(trimmedEmail) ? '/monitor_2' : '/monitor_control');
+				if (isZGroupAccount(trimmedEmail)) {
+					goto('/monitor_2');
+				} else if (isMaGroupAccount(trimmedEmail)) {
+					goto('/monitor_ma');
+				} else {
+					goto('/monitor_control');
+				}
 			} else {
 				goto('/');
 			}
