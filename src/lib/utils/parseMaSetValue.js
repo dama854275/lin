@@ -38,7 +38,8 @@ export function parseMaSetValue(str) {
 		} else if (key === '펫') {
 			result.pet = value;
 		} else if (key === '묘묘') {
-			result.myomyo = value;
+			const n = parseInt(value, 10);
+			result.myomyo = Number.isFinite(n) && n <= 0 ? '없음' : value;
 		} else if (key === '보유메소' || key === '보유 메소') {
 			result.meso = value;
 		}

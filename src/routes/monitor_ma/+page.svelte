@@ -10,7 +10,7 @@
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
-	import { fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
+	import { aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 
 	let currentUser = null;
@@ -36,14 +36,18 @@
 	let earnedLoading = false;
 	let earnedError = null;
 	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
-	$: totalEarnedToday = filteredMembers.reduce(
-		(sum, m) => sum + (Number(earnedByEmail?.[m?.email] ?? 0) || 0),
-		0
-	);
+	$: totalEarnedToday = (filteredMembers || []).reduce((sum, m) => {
+		const key = (m?.email || '').trim().toLowerCase();
+		return sum + (Number(earnedByEmail?.[key] ?? 0) || 0);
+	}, 0);
+	$: totalEarnedYesterday = (filteredMembers || []).reduce((sum, m) => {
+		const key = (m?.email || '').trim().toLowerCase();
+		return sum + (Number(earnedYesterdayByEmail?.[key] ?? 0) || 0);
+	}, 0);
 
 	// 최근 7일 수익 차트
 	let earnedRangeByDate = {};
-	let earnedRangeDates = getKstRecentDateStrings(10);
+	let earnedRangeDates = getKstRecentDateStrings(7);
 	let earnedRangeLoading = false;
 	let earnedRangeError = null;
 
@@ -53,7 +57,7 @@
 
 	$: dailyEarningsChartItems = aggregateEarnedChartData(
 		earnedRangeByDate,
-		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(10),
+		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(7),
 		filteredEmailSet,
 		getKstDateString()
 	);
@@ -63,6 +67,12 @@
 		const num = parseInt(money.replace(/,/g, ''), 10);
 		if (isNaN(num)) return money;
 		return num.toLocaleString('ko-KR');
+	}
+
+	function formatEokHint(amount) {
+		const n = Number(amount);
+		if (!Number.isFinite(n) || n < 100000000) return '';
+		return ` ( ${Math.floor(n / 100000000)}억 )`;
 	}
 
 	function getMemberEarned(email) {
@@ -75,41 +85,27 @@
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
 
+	function isMissingAvatar(avatar) {
+		const v = String(avatar || '').trim();
+		return v === '없음' || v === '0';
+	}
+
+	function isLowPet(pet) {
+		const n = parseInt(String(pet || '').trim(), 10);
+		return Number.isFinite(n) && n <= 2;
+	}
+
+	function isHighLevelThirdJob(parsed) {
+		const level = parseLevelNumber(parsed?.level);
+		const job = String(parsed?.job || '').trim();
+		return level !== null && level >= 120 && job === '3차';
+	}
+
 	function parseLevelNumber(level) {
 		if (level === null || level === undefined || level === '-') return null;
 		const n = parseInt(String(level).trim(), 10);
 		return Number.isFinite(n) ? n : null;
 	}
-
-	$: avgLevel = (() => {
-		const list = filteredMembers || [];
-		let sum = 0;
-		let cnt = 0;
-		for (const m of list) {
-			const parsed = getMaDisplay(m);
-			const lv = parseLevelNumber(parsed?.level);
-			if (lv === null || lv === 0) continue;
-			sum += lv;
-			cnt += 1;
-		}
-		if (!cnt) return null;
-		return Math.round((sum / cnt) * 10) / 10;
-	})();
-
-	$: avgHeldMeso = (() => {
-		const list = filteredMembers || [];
-		let sum = 0;
-		let cnt = 0;
-		for (const m of list) {
-			const parsed = getMaDisplay(m);
-			const amount = parseMoneyAmount(parsed?.meso);
-			if (amount <= 0) continue;
-			sum += amount;
-			cnt += 1;
-		}
-		if (!cnt) return null;
-		return Math.floor(sum / cnt);
-	})();
 
 	$: avgEarnedToday = (() => {
 		const list = filteredMembers || [];
@@ -147,10 +143,27 @@
 		return Math.floor(sum / cnt); // 버림
 	})();
 
-	async function fetchEarnedTotalsForMembers(members, statDate = getKstDateString()) {
-		const emails = Array.from(
+	function memberEmails(members) {
+		return Array.from(
 			new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
 		);
+	}
+
+	async function fetchEarnedBatch(emails, dates) {
+		const res = await fetch('/api/adena/earned-batch', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ emails, dates })
+		});
+		const payload = await res.json();
+		if (!res.ok || !payload?.success) {
+			throw new Error(payload?.error || 'earned-batch failed');
+		}
+		return Array.isArray(payload.rows) ? payload.rows : [];
+	}
+
+	async function fetchEarnedTotalsForMembers(members, statDate = getKstDateString()) {
+		const emails = memberEmails(members);
 		const yesterdayDate = getKstPreviousDateString(statDate);
 
 		earnedLoading = true;
@@ -159,30 +172,20 @@
 		try {
 			const todayMap = {};
 			const yesterdayMap = {};
+			const rows = emails.length
+				? await fetchEarnedBatch(emails, [statDate, yesterdayDate])
+				: [];
 
-			// Supabase IN 절 길이 제한을 고려해 적당히 청크 처리
-			const chunkSize = 200;
-			for (let i = 0; i < emails.length; i += chunkSize) {
-				const chunk = emails.slice(i, i + chunkSize);
-				const { data, error: qErr } = await supabase
-					.from('adena_daily')
-					.select('email, stat_date, earned_total')
-					.in('stat_date', [statDate, yesterdayDate])
-					.in('email', chunk);
-
-				if (qErr) throw qErr;
-
-				(data || []).forEach((row) => {
-					const e = String(row.email || '').trim().toLowerCase();
-					if (!e) return;
-					const amount = Number(row.earned_total) || 0;
-					if (row.stat_date === statDate) {
-						todayMap[e] = amount;
-					} else if (row.stat_date === yesterdayDate) {
-						yesterdayMap[e] = amount;
-					}
-				});
-			}
+			rows.forEach((row) => {
+				const e = String(row.email || '').trim().toLowerCase();
+				if (!e) return;
+				const amount = Number(row.earned_total) || 0;
+				if (row.stat_date === statDate) {
+					todayMap[e] = amount;
+				} else if (row.stat_date === yesterdayDate) {
+					yesterdayMap[e] = amount;
+				}
+			});
 
 			earnedByEmail = todayMap;
 			earnedYesterdayByEmail = yesterdayMap;
@@ -201,14 +204,28 @@
 		earnedRangeError = null;
 
 		try {
-			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, 10);
+			const emails = memberEmails(members);
+			const dates = getKstRecentDateStrings(7);
+			const byDate = {};
+			for (const d of dates) byDate[d] = {};
+
+			if (emails.length) {
+				const rows = await fetchEarnedBatch(emails, dates);
+				rows.forEach((row) => {
+					const dateKey = row.stat_date;
+					const emailKey = String(row.email || '').trim().toLowerCase();
+					if (!dateKey || !emailKey || !byDate[dateKey]) return;
+					byDate[dateKey][emailKey] = Number(row.earned_total) || 0;
+				});
+			}
+
 			earnedRangeByDate = byDate;
 			earnedRangeDates = dates;
 		} catch (e) {
 			console.error('earned range fetch error:', e);
 			earnedRangeError = '날짜별 보관 메소 차트를 불러오는 중 오류가 발생했습니다.';
 			earnedRangeByDate = {};
-			earnedRangeDates = getKstRecentDateStrings(10);
+			earnedRangeDates = getKstRecentDateStrings(7);
 		} finally {
 			earnedRangeLoading = false;
 		}
@@ -545,29 +562,37 @@
 				/>
 			</div>
 
-			<h4 class="text-lg font-semibold text-gray-800 mb-4">현재 캐릭터 현황</h4>
-			<div class="flex flex-row flex-nowrap gap-4 items-start w-full min-w-0">
+			<h4 class="text-lg font-semibold text-gray-800 mb-4">합계</h4>
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full min-w-0">
 				<!-- 전체 보유 메소 -->
-				<div class="bg-blue-50 rounded-lg p-4 w-[360px] min-h-[110px] shrink-0 self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 메소</h4>
+				<div class="bg-blue-50 rounded-lg p-4 min-h-[110px] min-w-0">
+					<h4 class="text-base font-bold text-gray-600 mb-2 break-words">전체 보유 메소<span class="text-blue-600">{formatEokHint(statistics.totalMoney)}</span></h4>
 					<p class="text-3xl font-bold text-blue-700 break-words">
 						{formatMoney(statistics.totalMoney.toString())}원
 					</p>
 				</div>
 
-				<!-- 캐릭터 평균 보유 메소 -->
-				<div class="bg-violet-50 rounded-lg p-4 w-[360px] min-h-[110px] shrink-0 self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">캐릭터 평균 보유 메소</h4>
-					<p class="text-3xl font-bold text-violet-700 break-words">
-						{#if avgHeldMeso === null}-{:else}{formatMoney(avgHeldMeso.toString())}원{/if}
+				<!-- 오늘 획득 메소 총합 -->
+				<div class="bg-emerald-50 rounded-lg p-4 min-h-[110px] min-w-0">
+					<h4 class="text-base font-bold text-gray-600 mb-2 break-words">오늘 획득 메소<span class="text-blue-600">{earnedLoading ? '' : formatEokHint(totalEarnedToday)}</span></h4>
+					<p class="text-3xl font-bold text-emerald-700 break-words">
+						{#if earnedLoading}
+							-
+						{:else}
+							{formatMoney(totalEarnedToday.toString())}원
+						{/if}
 					</p>
 				</div>
 
-				<!-- 캐릭터 평균 레벨 -->
-				<div class="bg-slate-50 rounded-lg p-4 w-[200px] min-h-[110px] shrink-0 self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">캐릭터 평균 레벨</h4>
-					<p class="text-3xl font-bold text-slate-800 break-words">
-						{#if avgLevel === null}-{:else}{avgLevel}{/if}
+				<!-- 어제 획득 메소 총합 -->
+				<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
+					<h4 class="text-base font-bold text-gray-600 mb-2 break-words">어제 획득 메소<span class="text-blue-600">{earnedLoading ? '' : formatEokHint(totalEarnedYesterday)}</span></h4>
+					<p class="text-3xl font-bold text-orange-700 break-words">
+						{#if earnedLoading}
+							-
+						{:else}
+							{formatMoney(totalEarnedYesterday.toString())}원
+						{/if}
 					</p>
 				</div>
 			</div>
@@ -688,6 +713,9 @@
 								이메일
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								별명
+							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								레벨
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -723,23 +751,27 @@
 						{#each filteredMembers as member}
 							{@const parsed = getMaDisplay(member)}
 							{@const lineage = parseApiValue(member?.api_value)}
+							{@const highlightJob = isHighLevelThirdJob(parsed)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
 									{formatEmailDisplay(member.email)}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+									{lineage.pcName}
+								</td>
+								<td class="px-4 py-4 text-base whitespace-nowrap {highlightJob ? 'font-bold text-red-600' : 'text-gray-500'}">
 									{parsed.level}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="px-4 py-4 text-base whitespace-nowrap {highlightJob ? 'font-bold text-red-600' : 'text-gray-500'}">
 									{parsed.job}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="px-4 py-4 text-base whitespace-nowrap {isMissingAvatar(parsed.avatar) ? 'font-bold text-red-600' : 'text-gray-500'}">
 									{parsed.avatar}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="px-4 py-4 text-base whitespace-nowrap {isLowPet(parsed.pet) ? 'font-bold text-red-600' : 'text-gray-500'}">
 									{parsed.pet}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="px-4 py-4 text-base whitespace-nowrap {parsed.myomyo === '없음' ? 'font-bold text-red-600' : 'text-gray-500'}">
 									{parsed.myomyo}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
