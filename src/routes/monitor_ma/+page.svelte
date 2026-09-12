@@ -16,7 +16,7 @@
 
 	let currentUser = null;
 	let referredMembers = [];
-	let loading = false;
+	let loading = true;
 	let error = null;
 	let listTruncated = false;
 	let membersFetchInFlight = false;

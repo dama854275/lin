@@ -3,11 +3,11 @@
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
 	import { user } from '$lib/stores/auth';
+	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 
-	let session = null;
 	let currentUser = null;
 	let currentUserLevel = null; // user_info 테이블의 level (1: 관리자, 2: 매니저, 3: 회원)
 
@@ -116,19 +116,9 @@
 
 	// (이전) insertUserInfoWithResilience 제거: 서버 API에서 upsert로 처리
 
-	onMount(async () => {
-		if (browser) {
-			// 현재 세션 확인
-			const { data: { session: currentSession } } = await supabase.auth.getSession();
-			session = currentSession;
-
-			// 인증 상태 변경 감지
-			supabase.auth.onAuthStateChange((_event, newSession) => {
-				session = newSession;
-			});
-
-			// user store 구독
-			user.subscribe(async (u) => {
+	onMount(() => {
+		if (!browser) return;
+		return subscribeUserEmail(user, async (u) => {
 				// 하위 계정 생성 중(signUp 과정)에는 auth 상태가 잠깐 바뀌며
 				// "상위 이메일" 입력값이 생성되는 이메일로 덮어써지는 문제가 있어,
 				// 생성 중에는 user 구독 로직으로 memberReferrerEmail을 갱신하지 않도록 방지합니다.
@@ -137,27 +127,25 @@
 				currentUser = u;
 				if (!u) {
 					goto('/login');
-				} else if (u?.email) {
-					const email = u.email.toLowerCase();
-					memberReferrerEmail = email;
-					// user_info에서 level 조회
-					const { data: userInfo } = await supabase
-						.from('user_info')
-						.select('level')
-						.eq('email', email)
-						.maybeSingle();
-					currentUserLevel = userInfo?.level ?? null;
-					// level 1일 때만 기간 부여/차감 내역, 프로그램 버전 조회
-					if (currentUserLevel === '1') {
-						await fetchPeriodHistory();
-						await fetchProgramVersion();
-						await fetchProgramVersion2();
-					}
-					await fetchNotices();
-					await fetchUpdates();
+					return;
 				}
+				if (!u.email) return;
+				const email = u.email.toLowerCase();
+				memberReferrerEmail = email;
+				const { data: userInfo } = await supabase
+					.from('user_info')
+					.select('level')
+					.eq('email', email)
+					.maybeSingle();
+				currentUserLevel = userInfo?.level ?? null;
+				if (currentUserLevel === '1') {
+					await fetchPeriodHistory();
+					await fetchProgramVersion();
+					await fetchProgramVersion2();
+				}
+				await fetchNotices();
+				await fetchUpdates();
 			});
-		}
 	});
 
 	async function fetchPeriodHistory() {

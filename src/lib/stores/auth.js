@@ -2,17 +2,24 @@ import { writable } from 'svelte/store';
 import { supabase } from '$lib/supabase/client';
 
 export const user = writable(null);
+/** getSession/onAuthStateChange 첫 확인이 끝나기 전에는 false */
+export const authReady = writable(false);
 
-// 초기 로그인 상태 확인
 if (typeof window !== 'undefined') {
-	supabase.auth.getSession().then(({ data: { session } }) => {
-		const currentUser = session?.user ?? null;
-		user.set(currentUser);
-	});
+	const applySession = (session) => {
+		user.set(session?.user ?? null);
+		authReady.set(true);
+	};
 
-	// 인증 상태 변경 구독
-	supabase.auth.onAuthStateChange((event, session) => {
-		const currentUser = session?.user ?? null;
-		user.set(currentUser);
+	supabase.auth.getSession()
+		.then(({ data: { session } }) => {
+			applySession(session);
+		})
+		.catch(() => {
+			applySession(null);
+		});
+
+	supabase.auth.onAuthStateChange((_event, session) => {
+		applySession(session);
 	});
 }

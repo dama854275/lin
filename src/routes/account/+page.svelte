@@ -4,6 +4,7 @@
 	import { supabase } from '$lib/supabase/client';
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { user } from '$lib/stores/auth';
+	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { goto } from '$app/navigation';
 	import {
 		summarizeAccountPeriodStats,
@@ -541,23 +542,22 @@
 		}
 	}
 
-	onMount(async () => {
-		if (browser) {
-			user.subscribe(async (u) => {
-				currentUser = u;
-				if (!u) {
-					goto('/login');
-				} else {
-					// 내 계정 정보와 추천한 회원 목록, 내역 조회
-					await fetchMyUserInfo();
-					await fetchReferredMembers();
-					await fetchGrantHistory();
-					pageLoading = false;
-				}
-			});
-		} else {
+	onMount(() => {
+		if (!browser) {
 			pageLoading = false;
+			return;
 		}
+		return subscribeUserEmail(user, async (u) => {
+			currentUser = u;
+			if (!u) {
+				goto('/login');
+				return;
+			}
+			await fetchMyUserInfo();
+			await fetchReferredMembers();
+			await fetchGrantHistory();
+			pageLoading = false;
+		});
 	});
 
 	async function handleLogout() {

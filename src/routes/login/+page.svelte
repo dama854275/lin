@@ -1,6 +1,7 @@
 <script>
 	import { supabase } from '$lib/supabase/client';
 	import { user } from '$lib/stores/auth';
+	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
@@ -11,8 +12,7 @@
 	let error = null;
 
 	onMount(() => {
-		// 이미 로그인되어 있으면 홈으로 리다이렉트
-		user.subscribe((currentUser) => {
+		return subscribeUserEmail(user, (currentUser) => {
 			if (currentUser) {
 				goto('/');
 			}

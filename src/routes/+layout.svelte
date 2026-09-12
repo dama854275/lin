@@ -4,7 +4,7 @@
 
 <script>
 	import '../app.css';
-	import { user } from '$lib/stores/auth';
+	import { user, authReady } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
@@ -12,6 +12,7 @@
 	import { browser } from '$app/environment';
 	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
 	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
+	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 
 	let mounted = false;
 	let currentUserLevel = null;
@@ -19,34 +20,31 @@
 	// 인증이 필요하지 않은 경로
 	const publicRoutes = ['/login', '/register'];
 
-	onMount(async () => {
+	onMount(() => {
 		mounted = true;
 
-		// 로그인된 경우 user_info에서 level 조회
-		if (browser) {
-			const unsubscribe = user.subscribe(async (u) => {
-				if (u?.email) {
-					const email = u.email.toLowerCase();
-					const { data: userInfo } = await supabase
-						.from('user_info')
-						.select('level')
-						.eq('email', email)
-						.maybeSingle();
-					currentUserLevel = userInfo?.level ?? null;
-				} else {
-					currentUserLevel = null;
-				}
-			});
-
-			// 레이아웃이 살아있는 동안만 사용 (별도 언마운트 훅 필요 없음)
-		}
+		if (!browser) return;
+		return subscribeUserEmail(user, async (u) => {
+			if (u?.email) {
+				const email = u.email.toLowerCase();
+				const { data: userInfo } = await supabase
+					.from('user_info')
+					.select('level')
+					.eq('email', email)
+					.maybeSingle();
+				currentUserLevel = userInfo?.level ?? null;
+			} else {
+				currentUserLevel = null;
+			}
+		});
 	});
 
 	// 현재 경로/사용자/레벨 상태
 	$: isPublicRoute = publicRoutes.some((route) => $page.url.pathname.startsWith(route));
 	$: currentPath = $page.url.pathname;
 	$: currentUser = $user;
-	$: isLevelLoading = currentUser && currentUserLevel === null;
+	$: isAuthReady = $authReady;
+	$: isLevelLoading = isAuthReady && currentUser && currentUserLevel === null;
 	$: bulkAccountCreationBusy = $accountBulkCreationInProgress;
 	$: monitorPath = currentUser && isZGroupAccount(currentUser.email)
 		? '/monitor_2'
@@ -66,6 +64,7 @@
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&
+		isAuthReady &&
 		!isPublicRoute &&
 		!bulkAccountCreationBusy &&
 		!currentUser
@@ -77,6 +76,7 @@
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&
+		isAuthReady &&
 		!isPublicRoute &&
 		!bulkAccountCreationBusy &&
 		currentUser &&
@@ -91,6 +91,7 @@
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&
+		isAuthReady &&
 		!bulkAccountCreationBusy &&
 		currentUser &&
 		currentUserLevel === '3' &&
@@ -106,6 +107,7 @@
 	// - level 3은 허용 경로에서만 노출
 	$: showContent =
 		isPublicRoute ||
+		!isAuthReady ||
 		!currentUser ||
 		bulkAccountCreationBusy ||
 		(!isLevelLoading &&
