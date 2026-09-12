@@ -101,9 +101,16 @@
 		return Math.floor((today.getTime() - updateDay.getTime()) / 86400000);
 	}
 
+	const memberDisplayCache = new WeakMap();
+	const memberStaleCache = new WeakMap();
+
 	function isStaleMember(member) {
+		if (!member) return false;
+		if (memberStaleCache.has(member)) return memberStaleCache.get(member);
 		const days = getKstDaysSince(member?.api_at);
-		return days !== null && days >= STALE_AFTER_DAYS;
+		const stale = days !== null && days >= STALE_AFTER_DAYS;
+		memberStaleCache.set(member, stale);
+		return stale;
 	}
 
 	function formatMoney(money) {
@@ -151,11 +158,13 @@
 	}
 
 	function getSortValue(member, key) {
-		const parsed = getMemberDisplay(member);
-		if (key === 'level') return parseLevelNumber(parsed.level) ?? -1;
-		if (key === 'money') return parseMoneyAmount(parsed.money);
 		if (key === 'earnedToday') return getMemberEarned(member?.email, member);
 		if (key === 'earnedYesterday') return getMemberEarnedYesterday(member?.email, member);
+		if (key === 'level' || key === 'money') {
+			const parsed = getMemberDisplay(member);
+			if (key === 'level') return parseLevelNumber(parsed.level) ?? -1;
+			return parseMoneyAmount(parsed.money);
+		}
 		return (member?.email || '').toLowerCase();
 	}
 
@@ -322,8 +331,14 @@
 	$: filteredMembers = referredMembers
 		.filter((member) => {
 			if (!member) return false;
-			
-			const parsed = getMemberDisplay(member);
+
+			const hasSearch = !!(searchFilterTerm && searchFilterTerm.trim() !== '');
+			const needParsed =
+				showStoppedOnly ||
+				(hasSearch && searchFilterType !== '이메일') ||
+				!!(levelFilterValue && levelFilterValue.toString().trim() !== '') ||
+				!!(adenFilterValue && adenFilterValue.toString().trim() !== '');
+			const parsed = needParsed ? getMemberDisplay(member) : null;
 			
 			// 중지 상태 필터
 			if (showStoppedOnly && parsed.status !== '중지') {
@@ -487,8 +502,12 @@
 		};
 	}
 
+	let lastStatsMemberKey = '';
+
 	$: {
-		if (filteredMembers && filteredMembers.length > 0) {
+		const memberKey = (filteredMembers || []).map((m) => m?.email || '').join('\n');
+		if (filteredMembers && filteredMembers.length > 0 && memberKey !== lastStatsMemberKey) {
+			lastStatsMemberKey = memberKey;
 			const newStats = calculateStatistics();
 			if (newStats.totalMoney > 0 || newStats.totalStorageMoney > 0 || Object.keys(newStats.itemCounts).length > 0) {
 				cachedStatistics = newStats;
@@ -577,13 +596,19 @@
 	}
 
 	function getMemberDisplay(member) {
-		if (isStaleMember(member)) return EMPTY_MEMBER_DISPLAY;
-		return mergeMemberSetValues(
-			parseApiValue(member?.api_value),
-			member?.set_value_1,
-			member?.set_value_2,
-			member?.set_value_3
-		);
+		if (!member) return EMPTY_MEMBER_DISPLAY;
+		const cached = memberDisplayCache.get(member);
+		if (cached) return cached;
+		const display = isStaleMember(member)
+			? EMPTY_MEMBER_DISPLAY
+			: mergeMemberSetValues(
+					parseApiValue(member?.api_value),
+					member?.set_value_1,
+					member?.set_value_2,
+					member?.set_value_3
+				);
+		memberDisplayCache.set(member, display);
+		return display;
 	}
 
 	async function fetchReferredMembers() {
@@ -914,7 +939,7 @@
 						</tr>
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
-						{#each filteredMembers as member}
+						{#each filteredMembers as member (member.email)}
 							{@const parsed = getMemberDisplay(member)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
