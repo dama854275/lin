@@ -5,7 +5,7 @@ import {
 	calculateStorageIncreaseDelta
 } from '$lib/utils/parseAdena';
 
-/** set_value_1 저장 후 스냅샷 + 일별 누적 갱신 */
+/** set_value_1 저장 후 보유아데나 증가분만 adena_daily 에 누적 */
 export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue1Text) {
 	const adena = extractAdenaFromSetValue1(setValue1Text);
 
@@ -26,7 +26,7 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 		return { ok: true, inserted: false, adena };
 	}
 
-	const prevStorage = prev ? (prev.storage_adena ?? 0) : null;
+	const prevHeld = prev ? Number(prev.held_adena ?? 0) : null;
 
 	const { error: insertError } = await supabase.from('adena_snapshots').insert([
 		{
@@ -42,7 +42,7 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 		return { ok: false, error: insertError.message, adena };
 	}
 
-	const dailyResult = await incrementAdenaDailyForToday(supabase, email, adena.storage, prevStorage);
+	const dailyResult = await incrementAdenaDailyForToday(supabase, email, adena.held, prevHeld);
 	if (!dailyResult.ok) {
 		return { ...dailyResult, adena };
 	}
@@ -51,18 +51,19 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 }
 
 /**
- * API로 보관값이 들어올 때마다 당일 earned_total 누적
- * - 당일 최초: API 보관값 그대로 누적 (전날 기록과 비교 안 함)
- * - 당일 2회차 이후: max(0, 이번 보관 - 직전 보관) 누적
+ * 보유 아데나 증가분만 당일 earned_total 에 누적
+ * - 기록이 없으면 기준점만 잡고 획득 0
+ * - 이후(날짜가 바뀌어도) max(0, 이번 - 직전) 만 오늘 획득에 합산
  */
 export async function incrementAdenaDailyForToday(
 	supabase,
 	email,
-	newStorage,
-	prevStorage,
+	newHeld,
+	prevHeld,
 	statDate = getKstDateString()
 ) {
-	const storage = Number(newStorage) || 0;
+	const held = Number(newHeld) || 0;
+	const delta = calculateStorageIncreaseDelta(prevHeld, held);
 
 	const { data: existing, error: fetchError } = await supabase
 		.from('adena_daily')
@@ -76,21 +77,18 @@ export async function incrementAdenaDailyForToday(
 		return { ok: false, error: fetchError.message };
 	}
 
-	const isFirstToday = !existing;
-	const delta = isFirstToday ? storage : calculateStorageIncreaseDelta(prevStorage, newStorage);
-
 	const summary = existing
 		? {
 				start_total: existing.start_total ?? 0,
-				end_total: storage,
-				max_total: Math.max(Number(existing.max_total) || 0, storage),
+				end_total: held,
+				max_total: Math.max(Number(existing.max_total) || 0, held),
 				earned_total: (Number(existing.earned_total) || 0) + delta,
 				snapshot_count: (Number(existing.snapshot_count) || 0) + 1
 			}
 		: {
-				start_total: storage,
-				end_total: storage,
-				max_total: storage,
+				start_total: held,
+				end_total: held,
+				max_total: held,
 				earned_total: delta,
 				snapshot_count: 1
 			};

@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
+	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { isMaGroupAccount } from '$lib/utils/groupPrefix';
@@ -11,6 +12,8 @@
 	let referredMembers = [];
 	let loading = false;
 	let error = null;
+	let listTruncated = false;
+	let membersFetchInFlight = false;
 	
 	// 필터 상태
 	let showStoppedOnly = false;
@@ -565,10 +568,12 @@
 	}, 0);
 
 	async function fetchReferredMembers() {
-		if (!currentUser?.email) return;
+		if (!currentUser?.email || membersFetchInFlight) return;
 
+		membersFetchInFlight = true;
 		loading = true;
 		error = null;
+		listTruncated = false;
 
 		try {
 			const email = currentUser.email || '';
@@ -590,7 +595,7 @@
 				likePattern = `${email}%`;
 			}
 
-			const { data, error: fetchError } = await fetchAllRows(() =>
+			const { data, error: fetchError, truncated } = await fetchAllRows(() =>
 				supabase
 					.from('user_info')
 					.select(
@@ -605,28 +610,28 @@
 				return;
 			}
 
+			listTruncated = !!truncated;
 			referredMembers = data || [];
 		} catch (err) {
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
 		} finally {
 			loading = false;
+			membersFetchInFlight = false;
 		}
 	}
 
-	onMount(async () => {
-		if (browser) {
-			user.subscribe(async (u) => {
-				currentUser = u;
-				if (!u) {
-					goto('/login');
-				} else if (isMaGroupAccount(u.email)) {
-					goto('/monitor_ma');
-				} else {
-					// 하위 계정 목록 조회
-					await fetchReferredMembers();
-				}
-			});
-		}
+	onMount(() => {
+		if (!browser) return;
+		return subscribeUserEmail(user, async (u) => {
+			currentUser = u;
+			if (!u) {
+				goto('/login');
+			} else if (isMaGroupAccount(u.email)) {
+				goto('/monitor_ma');
+			} else {
+				await fetchReferredMembers();
+			}
+		});
 	});
 
 	async function handleLogout() {
@@ -824,6 +829,9 @@
 
 			<div class="mt-4 text-base text-gray-600">
 				총 {filteredRows.length}개의 캐릭터
+				{#if listTruncated}
+					<span class="text-amber-600"> · 목록이 많아 일부만 표시합니다</span>
+				{/if}
 			</div>
 		{/if}
 	</div>

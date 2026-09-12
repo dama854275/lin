@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { formatKstChartDateLabel } from '$lib/utils/parseAdena';
 
 	/** @type {{ date: string, total: number, isToday?: boolean }[]} */
@@ -45,8 +46,7 @@
 	$: periodLabel = periodDays > 0 ? `${periodDays}일` : '';
 
 	$: maxTotal = Math.max(...items.map((i) => i.total), 1);
-	// 막대 간 간격(가로 폭)을 조금 더 넓게 + 컨테이너 폭에 맞춰 확장(비율 유지)
-	$: chartWidth = Math.max(items.length * 104, 460);
+	$: chartWidth = Math.max(containerWidth || items.length * 104, 200);
 	$: plotWidth = chartWidth - PADDING.left - PADDING.right;
 	$: plotHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom;
 	$: barWidth = items.length > 0 ? Math.min(48, (plotWidth / items.length) * 0.65) : 40;
@@ -55,7 +55,32 @@
 	$: sevenDayAvg = avgDaysCount > 0 ? Math.round(sevenDaySum / avgDaysCount) : null;
 
 	let chartWrapEl = null;
+	let containerWidth = 0;
 	let tooltip = null; // { x, y, date, total }
+	let resizeObserver = null;
+
+	function sizeChart(node) {
+		chartWrapEl = node;
+		const applyWidth = () => {
+			const w = Math.floor(node.clientWidth || 0);
+			if (w > 0) containerWidth = w;
+		};
+		applyWidth();
+		if (typeof ResizeObserver !== 'undefined') {
+			resizeObserver = new ResizeObserver(applyWidth);
+			resizeObserver.observe(node);
+		}
+		return {
+			destroy() {
+				resizeObserver?.disconnect();
+				resizeObserver = null;
+			}
+		};
+	}
+
+	onMount(() => {
+		return () => resizeObserver?.disconnect();
+	});
 
 	function setTooltip(e, item) {
 		if (!chartWrapEl || !item) return;
@@ -84,15 +109,13 @@
 		</div>
 	{:else if items.length === 0}
 		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
-			<p class="text-gray-500 text-base">표시할 보관 {currencyLabel} 데이터가 없습니다.</p>
+			<p class="text-gray-500 text-base">표시할 획득 {currencyLabel} 데이터가 없습니다.</p>
 		</div>
 	{:else}
 		<div class="flex flex-col lg:flex-row gap-6 items-start w-full">
 			<!-- 그래프(가로폭 꽉 채움) -->
-			<div
-				bind:this={chartWrapEl}
-				class="relative flex-1 min-w-0 overflow-x-auto rounded-xl bg-white border border-slate-200 p-4 text-center"
-			>
+			<div class="relative flex-1 min-w-0 overflow-hidden rounded-xl bg-white border border-slate-200 p-4">
+				<div use:sizeChart class="relative w-full">
 				{#if tooltip}
 					<div
 						class="absolute z-10 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
@@ -104,11 +127,11 @@
 				{/if}
 				<svg
 					viewBox="0 0 {chartWidth} {CHART_HEIGHT}"
-					width={chartWidth}
+					width="100%"
 					height={CHART_HEIGHT}
-					class="inline-block"
+					class="block"
 					role="img"
-					aria-label={`최근 ${periodLabel} 보관 ${currencyLabel} 막대 그래프`}
+					aria-label={`최근 ${periodLabel} 획득 ${currencyLabel} 막대 그래프`}
 				>
 					<!-- 범례 -->
 					<g>
@@ -158,7 +181,7 @@
 								height={Math.max(barH, item.total > 0 ? 4 : 0)}
 								rx="6"
 								role="img"
-								aria-label={`${formatChartAxisLabel(item.date)} 보관 ${currencyLabel} ${formatFull(item.total)}원`}
+								aria-label={`${formatChartAxisLabel(item.date)} 획득 ${currencyLabel} ${formatFull(item.total)}원`}
 								fill={item.isToday ? COLORS.barToday : COLORS.bar}
 								opacity={item.isToday ? 1 : 0.82}
 								stroke={item.isToday ? '#c2410c' : '#1d4ed8'}
@@ -198,6 +221,7 @@
 						</g>
 					{/each}
 				</svg>
+				</div>
 			</div>
 
 			<!-- 요약(그래프 오른쪽) -->
@@ -215,7 +239,7 @@
 				{#if items.length > 0}
 					{@const peak = items.reduce((a, b) => (a.total >= b.total ? a : b), items[0])}
 					<div class="w-full rounded-lg bg-amber-50 border border-amber-100 px-4 py-3">
-						<p class="text-xs font-medium text-amber-700 mb-0.5">최고 보관 증가일</p>
+						<p class="text-xs font-medium text-amber-700 mb-0.5">최고 획득일</p>
 						<p class="text-sm font-semibold text-amber-900">{formatKstChartDateLabel(peak.date)}</p>
 						<p class="text-lg font-bold text-amber-950">{formatFull(peak.total)}</p>
 					</div>

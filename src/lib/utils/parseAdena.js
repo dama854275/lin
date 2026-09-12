@@ -67,11 +67,11 @@ export function extractAdenaFromSetValue1(setValue1) {
 
 export function hasAdenaChanged(prev, next) {
 	if (!prev) return true;
-	const prevStorage = prev.storage_adena ?? prev.storage ?? 0;
-	return prevStorage !== next.storage;
+	const prevHeld = Number(prev.held_adena ?? prev.held ?? 0);
+	return prevHeld !== Number(next.held ?? 0);
 }
 
-/** API 수신 시 보관 증가분(마이너스·최초 기준선은 0) */
+/** API 수신 시 보유 증가분(마이너스·최초 기준선은 0) */
 export function calculateStorageIncreaseDelta(prevStorage, newStorage) {
 	if (prevStorage === null || prevStorage === undefined) return 0;
 	const net = (Number(newStorage) || 0) - (Number(prevStorage) || 0);

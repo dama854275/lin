@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
+	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { getZGroupPrefix, isMaGroupAccount } from '$lib/utils/groupPrefix';
@@ -13,16 +14,20 @@
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
 	import { fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
+	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
 
 	let currentUser = null;
 	let referredMembers = [];
 	let loading = false;
 	let error = null;
+	let listTruncated = false;
+	let membersFetchInFlight = false;
 	
 	// 필터 상태
 	let showStoppedOnly = false;
-	let searchFilterType = '아이템'; // '이메일' | '아이템' | '서버'
+	let searchFilterType = '보유 아이템'; // '이메일' | '서버' | '보유 아이템' | '장착 장비'
 	let searchFilterTerm = '';
+	let itemFilterType = '보유'; // '보유' 또는 '미보유'
 	let levelFilterValue = '';
 	let levelFilterType = '이상'; // '이상' 또는 '이하'
 	let adenFilterValue = '';
@@ -31,7 +36,7 @@
 	// 통계 값 유지용
 	let cachedStatistics = { totalMoney: 0, totalStorageMoney: 0, itemCounts: {} };
 
-	// 오늘/어제 보관 아데나 순 증가(earned_total) - adena_daily 기반
+	// 오늘/어제 보유 아데나 순 증가(earned_total) - adena_daily 기반
 	let earnedByEmail = {};
 	let earnedYesterdayByEmail = {};
 	let earnedLoading = false;
@@ -44,17 +49,20 @@
 
 	// 최근 7일 수익 차트
 	let earnedRangeByDate = {};
-	let earnedRangeDates = getKstRecentDateStrings(10);
+	let earnedRangeDates = getKstRecentDateStrings(7);
 	let earnedRangeLoading = false;
 	let earnedRangeError = null;
 
 	$: filteredEmailSet = new Set(
-		(filteredMembers || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean)
+		(filteredMembers || [])
+			.filter((m) => !isStaleMember(m))
+			.map((m) => (m?.email || '').trim().toLowerCase())
+			.filter(Boolean)
 	);
 
 	$: dailyEarningsChartItems = aggregateEarnedChartData(
 		earnedRangeByDate,
-		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(10),
+		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(7),
 		filteredEmailSet,
 		getKstDateString()
 	);
@@ -62,6 +70,34 @@
 	// 아이템/장비 팝업 상태
 	let itemPopupMember = null;
 	let equipPopupMember = null;
+	let earnedPopupEmail = null;
+
+	const STALE_AFTER_DAYS = 11;
+	const EMPTY_MEMBER_DISPLAY = {
+		pcName: '-',
+		server: '-',
+		status: '-',
+		level: '-',
+		money: '-',
+		storageMoney: '-',
+		huntingGround: '-',
+		equipment: [],
+		items: []
+	};
+
+	function getKstDaysSince(dateTime) {
+		if (!dateTime) return null;
+		const date = new Date(dateTime);
+		if (isNaN(date.getTime())) return null;
+		const updateDay = new Date(`${getKstDateString(date)}T12:00:00+09:00`);
+		const today = new Date(`${getKstDateString()}T12:00:00+09:00`);
+		return Math.floor((today.getTime() - updateDay.getTime()) / 86400000);
+	}
+
+	function isStaleMember(member) {
+		const days = getKstDaysSince(member?.api_at);
+		return days !== null && days >= STALE_AFTER_DAYS;
+	}
 
 	function formatMoney(money) {
 		if (!money || money === '-') return '-';
@@ -70,12 +106,14 @@
 		return num.toLocaleString('ko-KR');
 	}
 
-	function getMemberEarned(email) {
+	function getMemberEarned(email, member) {
+		if (member && isStaleMember(member)) return 0;
 		const key = (email || '').trim().toLowerCase();
 		return Number(earnedByEmail?.[key] ?? 0) || 0;
 	}
 
-	function getMemberEarnedYesterday(email) {
+	function getMemberEarnedYesterday(email, member) {
+		if (member && isStaleMember(member)) return 0;
 		const key = (email || '').trim().toLowerCase();
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
@@ -107,6 +145,7 @@
 		let sum = 0;
 		let cnt = 0;
 		for (const m of list) {
+			if (isStaleMember(m)) continue;
 			const key = (m?.email || '').trim().toLowerCase();
 			if (!key) continue;
 			if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
@@ -125,6 +164,7 @@
 		let sum = 0;
 		let cnt = 0;
 		for (const m of list) {
+			if (isStaleMember(m)) continue;
 			const key = (m?.email || '').trim().toLowerCase();
 			if (!key) continue;
 			if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
@@ -176,7 +216,7 @@
 			earnedYesterdayByEmail = yesterdayMap;
 		} catch (e) {
 			console.error('earned_total fetch error:', e);
-			earnedError = '보관 아데나 정보를 불러오는 중 오류가 발생했습니다.';
+			earnedError = '획득 아데나 정보를 불러오는 중 오류가 발생했습니다.';
 			earnedByEmail = {};
 			earnedYesterdayByEmail = {};
 		} finally {
@@ -189,14 +229,14 @@
 		earnedRangeError = null;
 
 		try {
-			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, 10);
+			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, 7);
 			earnedRangeByDate = byDate;
 			earnedRangeDates = dates;
 		} catch (e) {
 			console.error('earned range fetch error:', e);
-			earnedRangeError = '날짜별 보관 아데나 차트를 불러오는 중 오류가 발생했습니다.';
+			earnedRangeError = '날짜별 획득 아데나 차트를 불러오는 중 오류가 발생했습니다.';
 			earnedRangeByDate = {};
-			earnedRangeDates = getKstRecentDateStrings(10);
+			earnedRangeDates = getKstRecentDateStrings(7);
 		} finally {
 			earnedRangeLoading = false;
 		}
@@ -223,22 +263,29 @@
 				return false;
 			}
 
-			// 통합 검색 필터 (이메일/아이템/서버)
+			// 통합 검색 필터 (이메일/서버/보유 아이템/장착 장비)
 			if (searchFilterTerm && searchFilterTerm.trim() !== '') {
 				const searchTerm = searchFilterTerm.trim().toLowerCase();
 				if (searchFilterType === '이메일') {
 					const memberEmail = (member.email || '').toLowerCase();
 					if (!memberEmail.includes(searchTerm)) return false;
-				} else if (searchFilterType === '아이템') {
-					const hasItem = parsed.items && parsed.items.some((item) =>
-						item && item.toLowerCase().includes(searchTerm)
-					);
-					if (!hasItem) return false;
 				} else if (searchFilterType === '서버') {
 					const serverName = parsed.server && parsed.server !== '-'
 						? parsed.server.toLowerCase()
 						: '';
 					if (!serverName.includes(searchTerm)) return false;
+				} else if (searchFilterType === '보유 아이템') {
+					const hasItem = getDisplayItems(parsed.items).some((item) =>
+						item.toLowerCase().includes(searchTerm)
+					);
+					if (itemFilterType === '보유' && !hasItem) return false;
+					if (itemFilterType === '미보유' && hasItem) return false;
+				} else if (searchFilterType === '장착 장비') {
+					const hasEquip = getDisplayItems(parsed.equipment).some((item) =>
+						item.toLowerCase().includes(searchTerm)
+					);
+					if (itemFilterType === '보유' && !hasEquip) return false;
+					if (itemFilterType === '미보유' && hasEquip) return false;
 				}
 			}
 			
@@ -307,7 +354,7 @@
 					}
 				}
 			}
-			
+
 			return true;
 		})
 		.sort((a, b) => {
@@ -457,6 +504,7 @@
 	}
 
 	function getMemberDisplay(member) {
+		if (isStaleMember(member)) return EMPTY_MEMBER_DISPLAY;
 		return mergeMemberSetValues(
 			parseApiValue(member?.api_value),
 			member?.set_value_1,
@@ -466,16 +514,18 @@
 	}
 
 	async function fetchReferredMembers() {
-		if (!currentUser?.email) return;
+		if (!currentUser?.email || membersFetchInFlight) return;
 
 		const prefix = getZGroupPrefix(currentUser.email);
 		if (!prefix) return;
 
+		membersFetchInFlight = true;
 		loading = true;
 		error = null;
+		listTruncated = false;
 
 		try {
-			const { data, error: fetchError } = await fetchAllRows(() =>
+			const { data, error: fetchError, truncated } = await fetchAllRows(() =>
 				supabase
 					.from('user_info')
 					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3')
@@ -488,30 +538,31 @@
 				return;
 			}
 
+			listTruncated = !!truncated;
 			referredMembers = data || [];
 			await fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
 		} catch (err) {
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
 		} finally {
 			loading = false;
+			membersFetchInFlight = false;
 		}
 	}
 
-	onMount(async () => {
-		if (browser) {
-			user.subscribe(async (u) => {
-				currentUser = u;
-				if (!u) {
-					goto('/login');
-				} else if (isMaGroupAccount(u.email)) {
-					goto('/monitor_ma');
-				} else if (!getZGroupPrefix(u.email)) {
-					goto('/monitor');
-				} else {
-					await fetchReferredMembers();
-				}
-			});
-		}
+	onMount(() => {
+		if (!browser) return;
+		return subscribeUserEmail(user, async (u) => {
+			currentUser = u;
+			if (!u) {
+				goto('/login');
+			} else if (isMaGroupAccount(u.email)) {
+				goto('/monitor_ma');
+			} else if (!getZGroupPrefix(u.email)) {
+				goto('/monitor');
+			} else {
+				await fetchReferredMembers();
+			}
+		});
 	});
 
 	async function handleLogout() {
@@ -537,7 +588,7 @@
 	{#if !loading && !error && referredMembers.length > 0}
 		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 			<div class="border-b border-gray-200 pb-6 mb-6">
-				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 보관 아데나</h4>
+				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 획득 아데나</h4>
 				<DailyAdenaEarningsChart
 					items={dailyEarningsChartItems}
 					loading={earnedRangeLoading}
@@ -545,11 +596,11 @@
 				/>
 			</div>
 
-			<h4 class="text-lg font-semibold text-gray-800 mb-4">현재 캐릭터 현황</h4>
-			<div class="flex flex-row flex-nowrap gap-4 items-start w-full min-w-0">
+			<h4 class="text-lg font-semibold text-gray-800 mb-4">요약</h4>
+			<div class="flex flex-row gap-4 items-start w-full min-w-0">
 				<!-- 아이템별 개수 -->
-				<div class="bg-green-50 rounded-lg p-4 w-[420px] shrink-0">
-					<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">아이템별 보유 개수</h4>
+				<div class="bg-green-50 rounded-lg p-4 w-[32%] max-w-[420px] min-w-0 shrink">
+					<h4 class="text-base font-bold text-gray-600 mb-2">아이템별 보유 개수</h4>
 					<div class="max-h-48 overflow-y-scroll item-scrollbar pr-4" style="scrollbar-width: auto; scrollbar-color: #10b981 #d1fae5;">
 						{#if Object.keys(statistics.itemCounts).length === 0}
 							<p class="text-gray-500 text-base">보유 아이템이 없습니다.</p>
@@ -566,48 +617,40 @@
 					</div>
 				</div>
 
-				<div class="grid grid-cols-2 gap-4 shrink-0 self-start">
+				<div class="grid grid-cols-2 gap-4 flex-1 min-w-0 w-full">
 					<!-- 전체 보유 아데나 -->
-					<div class="bg-blue-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">전체 보유 아데나</h4>
+					<div class="bg-blue-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<h4 class="text-base font-bold text-gray-600 mb-2 break-words">전체 보유 아데나</h4>
 						<p class="text-3xl font-bold text-blue-700 break-words">
 							{formatMoney(statistics.totalMoney.toString())}원
 						</p>
 					</div>
 
-					<!-- 마지막 보관 아데나 합계 -->
-					<div class="bg-amber-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 whitespace-nowrap">마지막 보관 아데나</h4>
-						<p class="text-3xl font-bold text-amber-700 break-words">
-							{formatMoney(statistics.totalStorageMoney.toString())}원
+					<!-- 캐릭터 평균 레벨 -->
+					<div class="bg-slate-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">캐릭터 평균 레벨</h4>
+						<p class="text-3xl font-bold text-slate-800 break-words">
+							{#if avgLevel === null}-{:else}{avgLevel}{/if}
 						</p>
 					</div>
 
-					<!-- 캐릭터 평균 보관 아데나 (오늘) -->
-					<div class="bg-violet-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 보관 아데나</h4>
+					<!-- 캐릭터 평균 획득 아데나 (오늘) -->
+					<div class="bg-violet-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">각 캐릭터 별 평균 획득 아데나</h4>
 						<p class="text-3xl font-bold text-violet-700 break-words">
 							{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}원{/if}
 						</p>
 						<p class="text-xs text-gray-500 mt-1">오늘 기준 (현재 진행 중)</p>
 					</div>
 
-					<!-- 캐릭터 평균 보관 아데나 (어제) -->
-					<div class="bg-orange-50 rounded-lg p-4 w-[360px] min-h-[110px]">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">각 캐릭터 별 평균 보관 아데나</h4>
+					<!-- 캐릭터 평균 획득 아데나 (어제) -->
+					<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">각 캐릭터 별 평균 획득 아데나</h4>
 						<p class="text-3xl font-bold text-orange-700 break-words">
 							{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}원{/if}
 						</p>
 						<p class="text-xs text-gray-500 mt-1">어제 기준</p>
 					</div>
-				</div>
-
-				<!-- 캐릭터 평균 레벨 -->
-				<div class="bg-slate-50 rounded-lg p-4 w-[200px] min-h-[110px] shrink-0 self-start">
-					<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug">캐릭터 평균 레벨</h4>
-					<p class="text-3xl font-bold text-slate-800 break-words">
-						{#if avgLevel === null}-{:else}{avgLevel}{/if}
-					</p>
 				</div>
 
 			</div>
@@ -616,8 +659,8 @@
 
 	<!-- 필터 섹션 -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
-		<!-- 첫 번째 줄: 중지 상태, 검색 유형 드롭다운 + 검색어 -->
-		<div class="flex gap-6 items-center mb-4">
+		<!-- 첫 번째 줄: 중지 상태, 레벨, 보유 아데나 -->
+		<div class="flex flex-wrap gap-6 items-center mb-4">
 			<!-- 중지 상태 필터 -->
 			<div class="flex items-center">
 				<label class="flex items-center gap-2 cursor-pointer">
@@ -630,38 +673,15 @@
 				</label>
 			</div>
 			
-			<!-- 구분선 -->
 			<div class="h-6 w-px bg-gray-300"></div>
 
-			<!-- 검색 유형 드롭다운 + 검색어 입력 -->
-			<div class="flex items-center gap-2">
-				<select
-					bind:value={searchFilterType}
-					class="px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-				>
-					<option value="이메일">이메일</option>
-					<option value="아이템">아이템</option>
-					<option value="서버">서버</option>
-				</select>
-				<input
-					type="text"
-					bind:value={searchFilterTerm}
-					placeholder={searchFilterType + ' 검색'}
-					class="px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[200px]"
-				/>
-			</div>
-		</div>
-		
-		<!-- 두 번째 줄: 레벨, 보유 아데나 -->
-		<div class="flex gap-6 items-center">
 			<!-- 레벨 필터 -->
 			<div class="flex items-center gap-2">
 				<span class="text-base text-gray-600 whitespace-nowrap">레벨:</span>
 				<input
-					type="number"
+					type="text"
+					inputmode="numeric"
 					bind:value={levelFilterValue}
-					placeholder="레벨"
-					min="0"
 					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				/>
 				<select
@@ -673,17 +693,15 @@
 				</select>
 			</div>
 			
-			<!-- 구분선 -->
 			<div class="h-6 w-px bg-gray-300"></div>
 			
 			<!-- 보유 아데나 필터 -->
 			<div class="flex items-center gap-2">
 				<span class="text-base text-gray-600 whitespace-nowrap">보유 아데나:</span>
 				<input
-					type="number"
+					type="text"
+					inputmode="numeric"
 					bind:value={adenFilterValue}
-					placeholder="아데나"
-					min="0"
 					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				/>
 				<select
@@ -695,12 +713,43 @@
 				</select>
 			</div>
 		</div>
+		
+		<!-- 두 번째 줄: 통합 검색 -->
+		<div class="flex items-center gap-2">
+			<select
+				bind:value={searchFilterType}
+				class="px-3 py-2 border border-gray-400 rounded-lg text-base font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+			>
+				<option value="이메일">이메일</option>
+				<option value="서버">서버</option>
+				<option value="보유 아이템">보유 아이템</option>
+				<option value="장착 장비">장착 장비</option>
+			</select>
+			<input
+				type="text"
+				bind:value={searchFilterTerm}
+				placeholder={searchFilterType + ' 검색'}
+				class="px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[200px]"
+			/>
+			{#if searchFilterType === '보유 아이템' || searchFilterType === '장착 장비'}
+				<select
+					bind:value={itemFilterType}
+					class="px-3 py-2 border border-gray-400 rounded-lg text-base font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+				>
+					<option value="보유">보유</option>
+					<option value="미보유">미보유</option>
+				</select>
+			{/if}
+		</div>
 	</div>
 
 	<div class="bg-white rounded-lg shadow-md p-6">
 		<div class="flex justify-between items-center mb-4">
 			<h3 class="text-2xl font-semibold">그룹 계정 목록</h3>
-			<p class="text-sm text-gray-500 text-right">캐릭터가 사냥 중 마을에 도착해 점검을 할때 수집된 정보를 바탕으로 갱신됩니다</p>
+			<div class="text-sm text-gray-500 text-right">
+				<p>수집된 정보는 약 1시간 주기로 업데이트 됩니다</p>
+				<p>이메일을 클릭하면 일별 획득 내역을 확인 할 수 있습니다</p>
+			</div>
 		</div>
 
 		{#if loading}
@@ -743,13 +792,10 @@
 								보유
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								마지막 보관
+								오늘 획득
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								오늘 보관
-							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								어제 보관
+								어제 획득
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								사냥터
@@ -770,7 +816,13 @@
 							{@const parsed = getMemberDisplay(member)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
-									{formatEmailDisplay(member.email)}
+									<button
+										type="button"
+										on:click={() => earnedPopupEmail = member.email}
+										class="text-blue-700 hover:text-blue-900 hover:underline"
+									>
+										{formatEmailDisplay(member.email)}
+									</button>
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{parsed.pcName}
@@ -795,21 +847,18 @@
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{formatMoney(parsed.money)}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{formatMoney(parsed.storageMoney)}
-								</td>
 								<td class="px-4 py-4 text-base text-violet-700 whitespace-nowrap">
-									{#if earnedLoading}
+									{#if earnedLoading || isStaleMember(member)}
 										<span class="text-gray-400">-</span>
 									{:else}
-										{formatMoney(getMemberEarned(member.email).toString())}
+										{formatMoney(getMemberEarned(member.email, member).toString())}
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-indigo-700 whitespace-nowrap">
-									{#if earnedLoading}
+									{#if earnedLoading || isStaleMember(member)}
 										<span class="text-gray-400">-</span>
 									{:else}
-										{formatMoney(getMemberEarnedYesterday(member.email).toString())}
+										{formatMoney(getMemberEarnedYesterday(member.email, member).toString())}
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
@@ -852,6 +901,9 @@
 
 			<div class="mt-4 text-base text-gray-600">
 				총 {filteredMembers.length}명의 회원
+				{#if listTruncated}
+					<span class="text-amber-600"> · 목록이 많아 일부만 표시합니다</span>
+				{/if}
 				{#if showStoppedOnly || searchFilterTerm || levelFilterValue || adenFilterValue}
 					<span class="text-gray-400">(전체 {referredMembers.length}명 중)</span>
 				{/if}
@@ -859,6 +911,13 @@
 		{/if}
 	</div>
 </div>
+
+{#if earnedPopupEmail}
+	<MemberDailyEarnedPopup
+		email={earnedPopupEmail}
+		onClose={() => earnedPopupEmail = null}
+	/>
+{/if}
 
 <!-- 장착 장비 팝업 모달 -->
 {#if equipPopupMember}
