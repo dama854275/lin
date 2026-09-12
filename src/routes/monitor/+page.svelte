@@ -49,7 +49,10 @@
 	let earnedRangeError = null;
 
 	$: filteredEmailSet = new Set(
-		(filteredMembers || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean)
+		(filteredMembers || [])
+			.filter((m) => !isStaleMember(m))
+			.map((m) => (m?.email || '').trim().toLowerCase())
+			.filter(Boolean)
 	);
 
 	$: dailyEarningsChartItems = aggregateEarnedChartData(
@@ -63,6 +66,33 @@
 	let itemPopupMember = null;
 	let equipPopupMember = null;
 
+	const STALE_AFTER_DAYS = 11;
+	const EMPTY_MEMBER_DISPLAY = {
+		pcName: '-',
+		server: '-',
+		status: '-',
+		level: '-',
+		money: '-',
+		storageMoney: '-',
+		huntingGround: '-',
+		equipment: [],
+		items: []
+	};
+
+	function getKstDaysSince(dateTime) {
+		if (!dateTime) return null;
+		const date = new Date(dateTime);
+		if (isNaN(date.getTime())) return null;
+		const updateDay = new Date(`${getKstDateString(date)}T12:00:00+09:00`);
+		const today = new Date(`${getKstDateString()}T12:00:00+09:00`);
+		return Math.floor((today.getTime() - updateDay.getTime()) / 86400000);
+	}
+
+	function isStaleMember(member) {
+		const days = getKstDaysSince(member?.api_at);
+		return days !== null && days >= STALE_AFTER_DAYS;
+	}
+
 	function formatMoney(money) {
 		if (!money || money === '-') return '-';
 		const num = parseInt(money.replace(/,/g, ''), 10);
@@ -70,12 +100,14 @@
 		return num.toLocaleString('ko-KR');
 	}
 
-	function getMemberEarned(email) {
+	function getMemberEarned(email, member) {
+		if (member && isStaleMember(member)) return 0;
 		const key = (email || '').trim().toLowerCase();
 		return Number(earnedByEmail?.[key] ?? 0) || 0;
 	}
 
-	function getMemberEarnedYesterday(email) {
+	function getMemberEarnedYesterday(email, member) {
+		if (member && isStaleMember(member)) return 0;
 		const key = (email || '').trim().toLowerCase();
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
@@ -107,6 +139,7 @@
 		let sum = 0;
 		let cnt = 0;
 		for (const m of list) {
+			if (isStaleMember(m)) continue;
 			const key = (m?.email || '').trim().toLowerCase();
 			if (!key) continue;
 			if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
@@ -125,6 +158,7 @@
 		let sum = 0;
 		let cnt = 0;
 		for (const m of list) {
+			if (isStaleMember(m)) continue;
 			const key = (m?.email || '').trim().toLowerCase();
 			if (!key) continue;
 			if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
@@ -460,6 +494,7 @@
 	}
 
 	function getMemberDisplay(member) {
+		if (isStaleMember(member)) return EMPTY_MEMBER_DISPLAY;
 		return mergeMemberSetValues(
 			parseApiValue(member?.api_value),
 			member?.set_value_1,
@@ -800,17 +835,17 @@
 									{formatMoney(parsed.storageMoney)}
 								</td>
 								<td class="px-4 py-4 text-base text-violet-700 whitespace-nowrap">
-									{#if earnedLoading}
+									{#if earnedLoading || isStaleMember(member)}
 										<span class="text-gray-400">-</span>
 									{:else}
-										{formatMoney(getMemberEarned(member.email).toString())}
+										{formatMoney(getMemberEarned(member.email, member).toString())}
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-indigo-700 whitespace-nowrap">
-									{#if earnedLoading}
+									{#if earnedLoading || isStaleMember(member)}
 										<span class="text-gray-400">-</span>
 									{:else}
-										{formatMoney(getMemberEarnedYesterday(member.email).toString())}
+										{formatMoney(getMemberEarnedYesterday(member.email, member).toString())}
 									{/if}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
