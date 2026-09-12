@@ -32,6 +32,8 @@
 	let levelFilterType = '이상'; // '이상' 또는 '이하'
 	let adenFilterValue = '';
 	let adenFilterType = '이상'; // '이상' 또는 '이하'
+	let sortKey = 'email';
+	let sortDir = 'asc';
 	
 	// 통계 값 유지용
 	let cachedStatistics = { totalMoney: 0, totalStorageMoney: 0, itemCounts: {} };
@@ -42,10 +44,15 @@
 	let earnedLoading = false;
 	let earnedError = null;
 	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
-	$: totalEarnedToday = filteredMembers.reduce(
-		(sum, m) => sum + (Number(earnedByEmail?.[m?.email] ?? 0) || 0),
-		0
-	);
+	$: totalEarnedToday = (filteredMembers || []).reduce((sum, m) => {
+		if (isStaleMember(m)) return sum;
+		return sum + getMemberEarned(m?.email, m);
+	}, 0);
+
+	$: totalEarnedYesterday = (filteredMembers || []).reduce((sum, m) => {
+		if (isStaleMember(m)) return sum;
+		return sum + getMemberEarnedYesterday(m?.email, m);
+	}, 0);
 
 	// 최근 7일 수익 차트
 	let earnedRangeByDate = {};
@@ -117,6 +124,66 @@
 		const key = (email || '').trim().toLowerCase();
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
+
+	function resetFilters() {
+		showStoppedOnly = false;
+		searchFilterType = '보유 아이템';
+		searchFilterTerm = '';
+		itemFilterType = '보유';
+		levelFilterValue = '';
+		levelFilterType = '이상';
+		adenFilterValue = '';
+		adenFilterType = '이상';
+	}
+
+	function toggleSort(key) {
+		if (sortKey === key) {
+			sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+			return;
+		}
+		sortKey = key;
+		sortDir = key === 'email' ? 'asc' : 'desc';
+	}
+
+	function sortMark(key) {
+		if (sortKey !== key) return '';
+		return sortDir === 'asc' ? ' ↑' : ' ↓';
+	}
+
+	function getSortValue(member, key) {
+		const parsed = getMemberDisplay(member);
+		if (key === 'level') return parseLevelNumber(parsed.level) ?? -1;
+		if (key === 'money') return parseMoneyAmount(parsed.money);
+		if (key === 'earnedToday') return getMemberEarned(member?.email, member);
+		if (key === 'earnedYesterday') return getMemberEarnedYesterday(member?.email, member);
+		return (member?.email || '').toLowerCase();
+	}
+
+	$: hasActiveFilters = !!(
+		showStoppedOnly ||
+		searchFilterTerm ||
+		levelFilterValue ||
+		adenFilterValue
+	);
+
+	$: accountStatus = (() => {
+		let total = 0;
+		let running = 0;
+		let stopped = 0;
+		let stale = 0;
+		for (const member of referredMembers || []) {
+			if (!member) continue;
+			total += 1;
+			if (isStaleMember(member)) {
+				stale += 1;
+				continue;
+			}
+			const parsed = getMemberDisplay(member);
+			if (parsed.status === '중지') stopped += 1;
+			else if (parsed.status === '정상') running += 1;
+		}
+		return { total, running, stopped, stale };
+	})();
 
 	function parseLevelNumber(level) {
 		if (level === null || level === undefined || level === '-') return null;
@@ -361,10 +428,16 @@
 			return true;
 		})
 		.sort((a, b) => {
-			// 이메일 기준 오름차순 정렬
-			const emailA = (a.email || '').toLowerCase();
-			const emailB = (b.email || '').toLowerCase();
-			return emailA.localeCompare(emailB);
+			const valueA = getSortValue(a, sortKey);
+			const valueB = getSortValue(b, sortKey);
+			const direction = sortDir === 'asc' ? 1 : -1;
+			if (typeof valueA === 'string' || typeof valueB === 'string') {
+				return String(valueA).localeCompare(String(valueB), 'ko') * direction;
+			}
+			if (valueA === valueB) {
+				return (a.email || '').localeCompare(b.email || '', 'ko');
+			}
+			return (valueA - valueB) * direction;
 		});
 
 	function parseMoneyAmount(value) {
@@ -617,39 +690,53 @@
 					</div>
 				</div>
 
-				<div class="grid grid-cols-2 gap-4 flex-1 min-w-0 w-full">
-					<!-- 전체 보유 아데나 -->
-					<div class="bg-blue-50 rounded-lg p-4 min-h-[110px] min-w-0">
-						<h4 class="text-base font-bold text-gray-600 mb-2 break-words">전체 보유 아데나</h4>
-						<p class="text-3xl font-bold text-blue-700 break-words">
-							{formatMoney(statistics.totalMoney.toString())}원
-						</p>
+				<div class="flex flex-col gap-4 flex-1 min-w-0 w-full">
+					<div class="grid grid-cols-3 gap-4">
+						<div class="bg-blue-50 rounded-lg p-4 min-h-[110px] min-w-0">
+							<h4 class="text-base font-bold text-gray-600 mb-2 break-words">전체 보유 아데나</h4>
+							<p class="text-2xl font-bold text-blue-700 whitespace-nowrap">
+								{formatMoney(statistics.totalMoney.toString())}
+							</p>
+						</div>
+
+						<div class="bg-emerald-50 rounded-lg p-4 min-h-[110px] min-w-0">
+							<h4 class="text-base font-bold text-gray-600 mb-2 break-words">오늘 획득 합계</h4>
+							<p class="text-2xl font-bold text-emerald-700 whitespace-nowrap">
+								{formatMoney(totalEarnedToday.toString())}
+							</p>
+							<p class="text-xs text-gray-500 mt-1">현재 진행 중</p>
+						</div>
+
+						<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
+							<h4 class="text-base font-bold text-gray-600 mb-2 break-words">어제 획득 합계</h4>
+							<p class="text-2xl font-bold text-orange-700 whitespace-nowrap">
+								{formatMoney(totalEarnedYesterday.toString())}
+							</p>
+						</div>
 					</div>
 
-					<!-- 캐릭터 평균 레벨 -->
-					<div class="bg-slate-50 rounded-lg p-4 min-h-[110px] min-w-0">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">캐릭터 평균 레벨</h4>
-						<p class="text-3xl font-bold text-slate-800 break-words">
-							{#if avgLevel === null}-{:else}{avgLevel}{/if}
-						</p>
-					</div>
+					<div class="grid grid-cols-3 gap-4">
+						<div class="bg-slate-50 rounded-lg p-4 min-h-[110px] min-w-0">
+							<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">평균 레벨</h4>
+							<p class="text-2xl font-bold text-slate-800 whitespace-nowrap">
+								{#if avgLevel === null}-{:else}{avgLevel}{/if}
+							</p>
+						</div>
 
-					<!-- 캐릭터 평균 획득 아데나 (오늘) -->
-					<div class="bg-violet-50 rounded-lg p-4 min-h-[110px] min-w-0">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">각 캐릭터 별 평균 획득 아데나</h4>
-						<p class="text-3xl font-bold text-violet-700 break-words">
-							{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}원{/if}
-						</p>
-						<p class="text-xs text-gray-500 mt-1">오늘 기준 (현재 진행 중)</p>
-					</div>
+						<div class="bg-emerald-50 rounded-lg p-4 min-h-[110px] min-w-0">
+							<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">오늘 평균 획득</h4>
+							<p class="text-2xl font-bold text-emerald-700 whitespace-nowrap">
+								{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}{/if}
+							</p>
+							<p class="text-xs text-gray-500 mt-1">현재 진행 중</p>
+						</div>
 
-					<!-- 캐릭터 평균 획득 아데나 (어제) -->
-					<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
-						<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">각 캐릭터 별 평균 획득 아데나</h4>
-						<p class="text-3xl font-bold text-orange-700 break-words">
-							{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}원{/if}
-						</p>
-						<p class="text-xs text-gray-500 mt-1">어제 기준</p>
+						<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
+							<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">어제 평균 획득</h4>
+							<p class="text-2xl font-bold text-orange-700 whitespace-nowrap">
+								{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}{/if}
+							</p>
+						</div>
 					</div>
 				</div>
 
@@ -659,19 +746,16 @@
 
 	<!-- 필터 섹션 -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
-		<!-- 첫 번째 줄: 중지 상태, 레벨, 보유 아데나 -->
+		<!-- 첫 번째 줄: 문제 계정, 레벨, 보유 아데나 -->
 		<div class="flex flex-wrap gap-6 items-center mb-4">
-			<!-- 중지 상태 필터 -->
-			<div class="flex items-center">
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input
-						type="checkbox"
-						bind:checked={showStoppedOnly}
-						class="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500"
-					/>
-					<span class="text-base text-gray-700">중지 상태만 보기</span>
-				</label>
-			</div>
+			<label class="flex items-center gap-2 cursor-pointer">
+				<input
+					type="checkbox"
+					bind:checked={showStoppedOnly}
+					class="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500"
+				/>
+				<span class="text-base text-gray-700">중지 상태만 보기</span>
+			</label>
 			
 			<div class="h-6 w-px bg-gray-300"></div>
 
@@ -712,6 +796,15 @@
 					<option value="이하">이하</option>
 				</select>
 			</div>
+
+			<button
+				type="button"
+				on:click={resetFilters}
+				disabled={!hasActiveFilters}
+				class="ml-auto px-3 py-2 border border-gray-300 rounded-lg text-base text-gray-700 bg-white hover:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+			>
+				필터 초기화
+			</button>
 		</div>
 		
 		<!-- 두 번째 줄: 통합 검색 -->
@@ -741,6 +834,15 @@
 				</select>
 			{/if}
 		</div>
+	</div>
+
+	<div class="bg-white rounded-lg shadow-md px-6 py-3 mb-6">
+		<p class="text-base text-gray-800 whitespace-nowrap flex items-center gap-x-10">
+			<span>전체 {accountStatus.total}</span>
+			<span>동작 {accountStatus.running}</span>
+			<span>중지 {accountStatus.stopped}</span>
+			<span>장기 미접속 {accountStatus.stale}</span>
+		</p>
 	</div>
 
 	<div class="bg-white rounded-lg shadow-md p-6">
@@ -774,7 +876,7 @@
 					<thead class="bg-gray-50">
 						<tr>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								이메일
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('email')}>이메일{sortMark('email')}</button>
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								PC 별명
@@ -786,16 +888,16 @@
 								상태
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								레벨
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('level')}>레벨{sortMark('level')}</button>
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								보유
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('money')}>보유{sortMark('money')}</button>
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								오늘 획득
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('earnedToday')}>오늘 획득{sortMark('earnedToday')}</button>
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								어제 획득
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('earnedYesterday')}>어제 획득{sortMark('earnedYesterday')}</button>
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								사냥터
@@ -904,7 +1006,7 @@
 				{#if listTruncated}
 					<span class="text-amber-600"> · 목록이 많아 일부만 표시합니다</span>
 				{/if}
-				{#if showStoppedOnly || searchFilterTerm || levelFilterValue || adenFilterValue}
+				{#if hasActiveFilters}
 					<span class="text-gray-400">(전체 {referredMembers.length}명 중)</span>
 				{/if}
 			</div>
