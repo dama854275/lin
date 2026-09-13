@@ -44,15 +44,19 @@
 	let earnedLoading = false;
 	let earnedError = null;
 	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
-	$: totalEarnedToday = (filteredMembers || []).reduce((sum, m) => {
-		if (isStaleMember(m)) return sum;
-		return sum + getMemberEarned(m?.email, m);
-	}, 0);
+	function sumEarnedFromMap(members, map) {
+		let sum = 0;
+		for (const m of members || []) {
+			if (isStaleMember(m)) continue;
+			const key = (m?.email || '').trim().toLowerCase();
+			if (!key) continue;
+			sum += Number(map?.[key] ?? 0) || 0;
+		}
+		return sum;
+	}
 
-	$: totalEarnedYesterday = (filteredMembers || []).reduce((sum, m) => {
-		if (isStaleMember(m)) return sum;
-		return sum + getMemberEarnedYesterday(m?.email, m);
-	}, 0);
+	$: totalEarnedToday = sumEarnedFromMap(filteredMembers, earnedByEmail);
+	$: totalEarnedYesterday = sumEarnedFromMap(filteredMembers, earnedYesterdayByEmail);
 
 	// 최근 7일 수익 차트
 	let earnedRangeByDate = {};
