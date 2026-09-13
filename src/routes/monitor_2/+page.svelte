@@ -6,7 +6,7 @@
 	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-	import { getZGroupPrefix, isMaGroupAccount } from '$lib/utils/groupPrefix';
+	import { getZGroupPrefix, getZGroupEmailBounds, isMaGroupAccount, isSameZGroup } from '$lib/utils/groupPrefix';
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
@@ -612,7 +612,8 @@
 		if (!currentUser?.email || membersFetchInFlight) return;
 
 		const prefix = getZGroupPrefix(currentUser.email);
-		if (!prefix) return;
+		const bounds = getZGroupEmailBounds(prefix);
+		if (!prefix || !bounds) return;
 
 		membersFetchInFlight = true;
 		loading = true;
@@ -624,7 +625,8 @@
 				supabase
 					.from('user_info')
 					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3')
-					.like('email', `${prefix}%`)
+					.gte('email', bounds.start)
+					.lt('email', bounds.end)
 					.order('email', { ascending: true })
 			);
 
@@ -634,7 +636,7 @@
 			}
 
 			listTruncated = !!truncated;
-			referredMembers = data || [];
+			referredMembers = (data || []).filter((m) => isSameZGroup(m?.email, prefix));
 			await fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
 		} catch (err) {
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
