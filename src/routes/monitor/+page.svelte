@@ -12,7 +12,7 @@
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
-	import { fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
+	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
 
@@ -265,30 +265,21 @@
 		try {
 			const todayMap = {};
 			const yesterdayMap = {};
+			const rows = emails.length
+				? await fetchEarnedBatch(emails, [statDate, yesterdayDate])
+				: [];
 
-			// Supabase IN 절 길이 제한을 고려해 적당히 청크 처리
-			const chunkSize = 200;
-			for (let i = 0; i < emails.length; i += chunkSize) {
-				const chunk = emails.slice(i, i + chunkSize);
-				const { data, error: qErr } = await supabase
-					.from('adena_daily')
-					.select('email, stat_date, earned_total')
-					.in('stat_date', [statDate, yesterdayDate])
-					.in('email', chunk);
-
-				if (qErr) throw qErr;
-
-				(data || []).forEach((row) => {
-					const e = String(row.email || '').trim().toLowerCase();
-					if (!e) return;
-					const amount = Number(row.earned_total) || 0;
-					if (row.stat_date === statDate) {
-						todayMap[e] = amount;
-					} else if (row.stat_date === yesterdayDate) {
-						yesterdayMap[e] = amount;
-					}
-				});
-			}
+			rows.forEach((row) => {
+				const e = String(row.email || '').trim().toLowerCase();
+				if (!e) return;
+				const amount = Number(row.earned_total) || 0;
+				const dateKey = String(row.stat_date || '').slice(0, 10);
+				if (dateKey === statDate) {
+					todayMap[e] = amount;
+				} else if (dateKey === yesterdayDate) {
+					yesterdayMap[e] = amount;
+				}
+			});
 
 			earnedByEmail = todayMap;
 			earnedYesterdayByEmail = yesterdayMap;
