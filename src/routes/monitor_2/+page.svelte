@@ -13,6 +13,7 @@
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
 	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
+	// import { fetchLastIncreaseBatch } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
 
@@ -41,7 +42,9 @@
 	// 오늘/어제 보유 아데나 순 증가(earned_total) - adena_daily 기반
 	let earnedByEmail = {};
 	let earnedYesterdayByEmail = {};
+	// let lastIncreaseByEmail = {};
 	let earnedLoading = false;
+	// let lastIncreaseLoading = false;
 	let earnedError = null;
 	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
 	function sumEarnedFromMap(members, map) {
@@ -136,6 +139,12 @@
 		return Number(earnedYesterdayByEmail?.[key] ?? 0) || 0;
 	}
 
+	// function getMemberLastIncrease(email, member) {
+	// 	if (member && isStaleMember(member)) return 0;
+	// 	const key = (email || '').trim().toLowerCase();
+	// 	return Number(lastIncreaseByEmail?.[key] ?? 0) || 0;
+	// }
+
 	function resetFilters() {
 		showStoppedOnly = false;
 		searchFilterType = '보유 아이템';
@@ -164,6 +173,7 @@
 	function getSortValue(member, key) {
 		if (key === 'earnedToday') return getMemberEarned(member?.email, member);
 		if (key === 'earnedYesterday') return getMemberEarnedYesterday(member?.email, member);
+		// if (key === 'lastIncrease') return Number(lastIncreaseByEmail?.[(member?.email || '').trim().toLowerCase()] ?? 0) || 0;
 		if (key === 'level' || key === 'money') {
 			const parsed = getMemberDisplay(member);
 			if (key === 'level') return parseLevelNumber(parsed.level) ?? -1;
@@ -297,6 +307,29 @@
 		}
 	}
 
+	// async function fetchLastIncreasesForMembers(members) {
+	// 	const emails = Array.from(
+	// 		new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
+	// 	);
+	//
+	// 	lastIncreaseLoading = true;
+	// 	try {
+	// 		const rows = emails.length ? await fetchLastIncreaseBatch(emails) : [];
+	// 		const map = {};
+	// 		rows.forEach((row) => {
+	// 			const e = String(row.email || '').trim().toLowerCase();
+	// 			if (!e) return;
+	// 			map[e] = Number(row.last_increase) || 0;
+	// 		});
+	// 		lastIncreaseByEmail = map;
+	// 	} catch (e) {
+	// 		console.error('last_increase fetch error:', e);
+	// 		lastIncreaseByEmail = {};
+	// 	} finally {
+	// 		lastIncreaseLoading = false;
+	// 	}
+	// }
+
 	async function fetchEarnedRangeForMembers(members) {
 		earnedRangeLoading = true;
 		earnedRangeError = null;
@@ -322,6 +355,7 @@
 
 	$: if (browser && referredMembers && referredMembers.length > 0) {
 		fetchEarnedRangeForMembers(referredMembers);
+		// fetchLastIncreasesForMembers(referredMembers);
 	}
 
 	// 필터링된 회원 목록 계산
@@ -768,6 +802,34 @@
 		</div>
 	{/if}
 
+	<div class="bg-white rounded-lg shadow-md px-6 py-4 mb-4">
+		<div class="text-sm text-gray-600 leading-relaxed space-y-3">
+			<p>* 수집된 정보는 약 1시간 주기로 업데이트 됩니다</p>
+			<p>* 이메일을 클릭하면 일별 획득 내역을 확인 할 수 있습니다</p>
+			<!-- <p>* 직전 획득은 마지막 수집과 그 직전 수집의 보유 차이입니다. 수집이 1시간 안에 여러 번이면 그 사이 증가분만 보입니다. 프로그램이 오래 멈춰 있었다면 틀린 값이 나올 수 있습니다.</p> -->
+			<p class="font-medium text-red-600">[ 주의 ] 수동으로 아데나를 옮겨 증가된 아데나도 획득량으로 계산됩니다</p>
+		</div>
+	</div>
+
+	<div class="flex flex-wrap items-center gap-3 mb-4">
+		<div class="flex items-baseline gap-2 rounded-lg bg-slate-50 px-3 py-2 border-2 border-slate-300">
+			<span class="text-sm font-medium text-slate-500">전체</span>
+			<span class="text-lg font-bold text-slate-800">{accountStatus.total}</span>
+		</div>
+		<div class="flex items-baseline gap-2 rounded-lg bg-emerald-50 px-3 py-2 border-2 border-emerald-300">
+			<span class="text-sm font-medium text-emerald-600">동작</span>
+			<span class="text-lg font-bold text-emerald-700">{accountStatus.running}</span>
+		</div>
+		<div class="flex items-baseline gap-2 rounded-lg bg-red-50 px-3 py-2 border-2 border-red-300">
+			<span class="text-sm font-medium text-red-600">중지</span>
+			<span class="text-lg font-bold text-red-700">{accountStatus.stopped}</span>
+		</div>
+		<div class="flex items-baseline gap-2 rounded-lg bg-amber-50 px-3 py-2 border-2 border-amber-300">
+			<span class="text-sm font-medium text-amber-600">장기 미접속</span>
+			<span class="text-lg font-bold text-amber-700">{accountStatus.stale}</span>
+		</div>
+	</div>
+
 	<!-- 필터 섹션 -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 		<!-- 첫 번째 줄: 문제 계정, 레벨, 보유 아데나 -->
@@ -860,22 +922,9 @@
 		</div>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-md px-6 py-3 mb-6">
-		<p class="text-base text-gray-800 whitespace-nowrap flex items-center gap-x-10">
-			<span>전체 {accountStatus.total}</span>
-			<span>동작 {accountStatus.running}</span>
-			<span>중지 {accountStatus.stopped}</span>
-			<span>장기 미접속 {accountStatus.stale}</span>
-		</p>
-	</div>
-
 	<div class="bg-white rounded-lg shadow-md p-6">
 		<div class="flex justify-between items-center mb-4">
 			<h3 class="text-2xl font-semibold">그룹 계정 목록</h3>
-			<div class="text-sm text-gray-500 text-right">
-				<p>수집된 정보는 약 1시간 주기로 업데이트 됩니다</p>
-				<p>이메일을 클릭하면 일별 획득 내역을 확인 할 수 있습니다</p>
-			</div>
 		</div>
 
 		{#if loading}
@@ -917,6 +966,11 @@
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('money')}>보유{sortMark('money')}</button>
 							</th>
+							<!--
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('lastIncrease')}>직전 획득{sortMark('lastIncrease')}</button>
+							</th>
+							-->
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('earnedToday')}>오늘 획득{sortMark('earnedToday')}</button>
 							</th>
@@ -973,6 +1027,15 @@
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{formatMoney(parsed.money)}
 								</td>
+								<!--
+								<td class="px-4 py-4 text-base text-teal-700 whitespace-nowrap">
+									{#if lastIncreaseLoading || isStaleMember(member)}
+										<span class="text-gray-400">-</span>
+									{:else}
+										{formatMoney((Number(lastIncreaseByEmail?.[(member.email || '').trim().toLowerCase()] ?? 0) || 0).toString())}
+									{/if}
+								</td>
+								-->
 								<td class="px-4 py-4 text-base text-violet-700 whitespace-nowrap">
 									{#if earnedLoading || isStaleMember(member)}
 										<span class="text-gray-400">-</span>

@@ -67,7 +67,9 @@
 				} else if (isMaGroupAccount(trimmedEmail)) {
 					goto('/monitor_ma');
 				} else {
-					goto('/monitor_control');
+					await supabase.auth.signOut();
+					error = '접속할 수 없는 계정입니다.';
+					return;
 				}
 			} else {
 				goto('/');

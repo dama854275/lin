@@ -6,7 +6,6 @@
 	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-	import { isMaGroupAccount } from '$lib/utils/groupPrefix';
 
 	let currentUser = null;
 	let referredMembers = [];
@@ -622,16 +621,7 @@
 
 	onMount(() => {
 		if (!browser) return;
-		return subscribeUserEmail(user, async (u) => {
-			currentUser = u;
-			if (!u) {
-				goto('/login');
-			} else if (isMaGroupAccount(u.email)) {
-				goto('/monitor_ma');
-			} else {
-				await fetchReferredMembers();
-			}
-		});
+		goto('/monitor');
 	});
 
 	async function handleLogout() {

@@ -20,6 +20,20 @@ export async function fetchEarnedBatch(emails, dates) {
 	return Array.isArray(payload.rows) ? payload.rows : [];
 }
 
+// /** RLS 없이 서버에서 계정당 직전 보유 증가분 조회 */
+// export async function fetchLastIncreaseBatch(emails) {
+// 	const res = await fetch('/api/adena/last-increase', {
+// 		method: 'POST',
+// 		headers: { 'Content-Type': 'application/json' },
+// 		body: JSON.stringify({ emails })
+// 	});
+// 	const payload = await res.json();
+// 	if (!res.ok || !payload?.success) {
+// 		throw new Error(payload?.error || 'last-increase failed');
+// 	}
+// 	return Array.isArray(payload.rows) ? payload.rows : [];
+// }
+
 /** referredMembers 기준 최근 N일 adena_daily 조회 → { [stat_date]: { [email]: earned_total } } */
 export async function fetchEarnedDailyRange(_supabase, members, dayCount = 7) {
 	const emails = memberEmails(members);

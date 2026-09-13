@@ -54,7 +54,8 @@
 	$: isMonitorActive = currentPath === '/monitor' || currentPath === '/monitor_2' || currentPath === '/monitor_ma';
 	$: isZGroupUser = currentUser && isZGroupAccount(currentUser.email);
 	$: isMaGroupUser = currentUser && isMaGroupAccount(currentUser.email);
-	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : isMaGroupUser ? '/monitor_ma' : '/monitor_control';
+	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : isMaGroupUser ? '/monitor_ma' : null;
+	$: isLevel3 = currentUserLevel != null && String(currentUserLevel).trim() === '3';
 
 	// 허용 레벨: 1, 2, 3만 로그인 유지
 	$: isLevelAllowed = currentUserLevel != null && ['1', '2', '3'].includes(String(currentUserLevel).trim());
@@ -87,14 +88,29 @@
 		supabase.auth.signOut().then(() => goto('/login'));
 	}
 
-	// level 3 사용자는 허용 경로 외 접근 금지 (z_ → /monitor_2, ma_ → /monitor_ma, 그 외 → /monitor_control)
+	// level 3 일반 계정은 monitor_control 비활성화로 접속 불가
+	$: if (
+		mounted &&
+		typeof window !== 'undefined' &&
+		isAuthReady &&
+		!isPublicRoute &&
+		!bulkAccountCreationBusy &&
+		currentUser &&
+		isLevel3 &&
+		!level3AllowedPath
+	) {
+		supabase.auth.signOut().then(() => goto('/login'));
+	}
+
+	// level 3 사용자는 허용 경로 외 접근 금지 (z_ → /monitor_2, ma_ → /monitor_ma)
 	$: if (
 		mounted &&
 		typeof window !== 'undefined' &&
 		isAuthReady &&
 		!bulkAccountCreationBusy &&
 		currentUser &&
-		currentUserLevel === '3' &&
+		isLevel3 &&
+		level3AllowedPath &&
 		currentPath !== level3AllowedPath
 	) {
 		goto(level3AllowedPath);
@@ -111,11 +127,11 @@
 		!currentUser ||
 		bulkAccountCreationBusy ||
 		(!isLevelLoading &&
-			(currentUserLevel !== '3' || (currentUserLevel === '3' && currentPath === level3AllowedPath)));
+			(!isLevel3 || (isLevel3 && level3AllowedPath && currentPath === level3AllowedPath)));
 </script>
 
 {#if !isPublicRoute}
-	<div class="min-h-screen bg-gray-50 flex flex-col">
+	<div class="min-h-screen bg-[#f6f7f8] flex flex-col">
 		<!-- 상단 가로 메뉴 -->
 		<header class="bg-white shadow-md">
 			<div class="flex items-center gap-8 px-6 py-4">
@@ -123,7 +139,7 @@
 				<nav class="flex flex-row flex-wrap items-center gap-2">
 					{#if currentUser && currentUserLevel === null}
 						<!-- 로그인 중 등급 로딩 중일 때는 메뉴를 잠시 숨김 (깜빡임 방지) -->
-					{:else if currentUserLevel === '3'}
+					{:else if isLevel3 && level3AllowedPath}
 						<a
 							href={level3AllowedPath}
 							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === level3AllowedPath ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
