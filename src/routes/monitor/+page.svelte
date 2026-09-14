@@ -94,6 +94,8 @@
 		level: '-',
 		money: '-',
 		storageMoney: '-',
+		hourlyKill: '-',
+		hourlyAdena: '-',
 		huntingGround: '-',
 		equipment: [],
 		items: []
@@ -120,10 +122,19 @@
 		return stale;
 	}
 
+	function isPendingDisplayValue(value) {
+		const s = String(value ?? '').trim();
+		return !s || s === '-' || s === '확인 대기중';
+	}
+
+	function formatLevel(level) {
+		return isPendingDisplayValue(level) ? '-' : String(level).trim();
+	}
+
 	function formatMoney(money) {
-		if (!money || money === '-') return '-';
-		const num = parseInt(money.replace(/,/g, ''), 10);
-		if (isNaN(num)) return money;
+		if (isPendingDisplayValue(money)) return '-';
+		const num = parseInt(String(money).replace(/,/g, ''), 10);
+		if (isNaN(num)) return '-';
 		return num.toLocaleString('ko-KR');
 	}
 
@@ -174,9 +185,11 @@
 		if (key === 'earnedToday') return getMemberEarned(member?.email, member);
 		if (key === 'earnedYesterday') return getMemberEarnedYesterday(member?.email, member);
 		// if (key === 'lastIncrease') return Number(lastIncreaseByEmail?.[(member?.email || '').trim().toLowerCase()] ?? 0) || 0;
-		if (key === 'level' || key === 'money') {
+		if (key === 'level' || key === 'money' || key === 'hourlyKill' || key === 'hourlyAdena') {
 			const parsed = getMemberDisplay(member);
 			if (key === 'level') return parseLevelNumber(parsed.level) ?? -1;
+			if (key === 'hourlyKill') return parseMoneyAmount(parsed.hourlyKill);
+			if (key === 'hourlyAdena') return parseMoneyAmount(parsed.hourlyAdena);
 			return parseMoneyAmount(parsed.money);
 		}
 		return (member?.email || '').toLowerCase();
@@ -802,8 +815,9 @@
 		<div class="text-sm text-gray-600 leading-relaxed space-y-3">
 			<p>* 수집된 정보는 약 1시간 주기로 업데이트 됩니다</p>
 			<p>* 이메일을 클릭하면 일별 획득 내역을 확인 할 수 있습니다</p>
-			<p>* 프로그램을 처음 실행하는 코드는 보유하고 있는 아데나가 '오늘 획득'에 반영되어 큰 값이 보일수 있습니다</p>
+			<p>* 프로그램을 처음 실행하는 코드는 보유 아데나가 '오늘 획득'에 반영되어 큰 값이 적용 될 수 있습니다</p>
 			<p>* 감소된 아데나는 계산에서 제외 됩니다 오직 증가된 아데나만 계산에 포함됩니다</p>
+			<p>* 1시간 킬수와 1시간 아데나는 최근 1시간동안 사냥한 몬스터 수와 획득한 아데나 값입니다</p>
 			<!-- <p>* 직전 획득은 마지막 수집과 그 직전 수집의 보유 차이입니다. 수집이 1시간 안에 여러 번이면 그 사이 증가분만 보입니다. 프로그램이 오래 멈춰 있었다면 틀린 값이 나올 수 있습니다.</p> -->
 			<p class="font-medium text-red-600">[ 주의 ] 다른 캐릭터로부터 받아 증가된 아데나도 획득량으로 계산됩니다</p>
 		</div>
@@ -951,14 +965,20 @@
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								서버
 							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-px">
 								상태
 							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+							<th class="pl-3 pr-4 py-3 text-left text-sm font-medium text-gray-500 whitespace-nowrap w-px">
 								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('level')}>레벨{sortMark('level')}</button>
 							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+							<th class="pl-4 pr-3 py-3 text-left text-sm font-medium text-gray-500 whitespace-nowrap w-px">
 								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('money')}>보유{sortMark('money')}</button>
+							</th>
+							<th class="pl-4 pr-3 py-3 text-left text-sm font-medium text-gray-500 whitespace-nowrap w-px">
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('hourlyKill')}>1시간 킬수{sortMark('hourlyKill')}</button>
+							</th>
+							<th class="pl-3 pr-4 py-3 text-left text-sm font-medium text-gray-500 whitespace-nowrap w-px">
+								<button type="button" class="hover:text-gray-800" on:click={() => toggleSort('hourlyAdena')}>1시간 획득량{sortMark('hourlyAdena')}</button>
 							</th>
 							<!--
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -980,7 +1000,7 @@
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								보유 아이템
 							</th>
-							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-full">
 								갱신 시간
 							</th>
 						</tr>
@@ -1004,7 +1024,7 @@
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{parsed.server}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap w-px">
 									<div class="flex items-center">
 										{#if parsed.status === '정상'}
 											<span class="w-4 h-4 bg-green-500 rounded-full inline-block flex-shrink-0" title="정상"></span>
@@ -1015,11 +1035,17 @@
 										{/if}
 									</div>
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
-									{parsed.level}
+								<td class="pl-3 pr-4 py-4 text-base text-gray-500 whitespace-nowrap w-px">
+									{formatLevel(parsed.level)}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="pl-4 pr-3 py-4 text-base whitespace-nowrap w-px {parseMoneyAmount(parsed.money) >= 1000000 ? 'font-bold text-gray-800' : 'text-gray-500'}">
 									{formatMoney(parsed.money)}
+								</td>
+								<td class="pl-4 pr-3 py-4 text-base text-amber-800 whitespace-nowrap w-px">
+									{formatMoney(parsed.hourlyKill)}
+								</td>
+								<td class="pl-3 pr-4 py-4 text-base text-orange-700 whitespace-nowrap w-px">
+									{formatMoney(parsed.hourlyAdena)}
 								</td>
 								<!--
 								<td class="px-4 py-4 text-base text-teal-700 whitespace-nowrap">
@@ -1073,7 +1099,7 @@
 										<span class="text-gray-400 whitespace-nowrap">확인 대기중</span>
 									{/if}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap w-full">
 									{formatKstMonitorDateTime(member.api_at)}
 								</td>
 							</tr>
