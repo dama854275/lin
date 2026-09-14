@@ -808,10 +808,6 @@
 	</div>
 
 	<div class="flex flex-wrap items-center gap-3 mb-4">
-		<div class="flex items-baseline gap-2 rounded-lg bg-slate-50 px-3 py-2 border-2 border-slate-300">
-			<span class="text-sm font-medium text-slate-500">전체</span>
-			<span class="text-lg font-bold text-slate-800">{accountStatus.total}</span>
-		</div>
 		<div class="flex items-baseline gap-2 rounded-lg bg-emerald-50 px-3 py-2 border-2 border-emerald-300">
 			<span class="text-sm font-medium text-emerald-600">동작</span>
 			<span class="text-lg font-bold text-emerald-700">{accountStatus.running}</span>
