@@ -170,11 +170,15 @@
 				<div use:sizeChart class="relative w-full">
 				{#if tooltip}
 					<div
-						class="absolute z-10 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
-						style="left: {tooltip.x}px; top: {Math.max(tooltip.y - 44, 8)}px; transform: {tooltip.placeLeft ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)'};"
+						class="absolute z-10 pointer-events-none"
+						style="left: {tooltip.x}px; top: {Math.max(tooltip.y - 72, 8)}px; transform: {tooltip.placeLeft ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)'};"
 					>
-						<div class="font-semibold">{formatChartAxisLabel(tooltip.date)}</div>
-						<div class="mt-0.5">{formatFull(tooltip.total)}원</div>
+						{#key tooltip.date}
+							<div class="chart-tooltip-flash px-4 py-3 rounded-xl bg-slate-900 text-white shadow-xl whitespace-nowrap">
+								<div class="text-sm font-semibold tracking-wide">{formatChartAxisLabel(tooltip.date)}</div>
+								<div class="mt-1 text-lg font-bold">{formatFull(tooltip.total)}</div>
+							</div>
+						{/key}
 					</div>
 				{/if}
 				<svg
@@ -311,3 +315,20 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.chart-tooltip-flash {
+		animation: chart-tooltip-refresh 180ms ease-out;
+	}
+
+	@keyframes chart-tooltip-refresh {
+		0% {
+			opacity: 0.4;
+			transform: scale(0.94);
+		}
+		100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
+</style>
