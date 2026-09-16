@@ -53,6 +53,10 @@
 
 	function formatTooltipDate(dateStr) {
 		const date = new Date(`${dateStr}T12:00:00+09:00`);
+		const weekday = new Intl.DateTimeFormat('ko-KR', {
+			weekday: 'narrow',
+			timeZone: 'Asia/Seoul'
+		}).format(date);
 		const parts = new Intl.DateTimeFormat('en-US', {
 			month: 'numeric',
 			day: 'numeric',
@@ -60,7 +64,7 @@
 		}).formatToParts(date);
 		const month = parts.find((p) => p.type === 'month')?.value;
 		const day = parts.find((p) => p.type === 'day')?.value;
-		return `${Number(month)}월 ${Number(day)}일`;
+		return `${weekday} (${Number(month)}월 ${Number(day)}일)`;
 	}
 
 	function isOddCalendarDay(dateStr) {
