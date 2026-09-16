@@ -116,18 +116,8 @@
 		goto(level3AllowedPath);
 	}
 
-	// 컨텐츠 노출 조건
-	// - 공용 경로는 항상 노출
-	// - 로그인 전에는 노출
-	// - 로그인 후 level 로딩 중이면 잠시 노출 안 함 (깜빡임 방지)
-	// - level 3은 허용 경로에서만 노출
-	$: showContent =
-		isPublicRoute ||
-		!isAuthReady ||
-		!currentUser ||
-		bulkAccountCreationBusy ||
-		(!isLevelLoading &&
-			(!isLevel3 || (isLevel3 && level3AllowedPath && currentPath === level3AllowedPath)));
+	// slot은 항상 렌더합니다. {#if}로 slot을 감싸면 로그인 직후 클라이언트
+	// 이동 시 페이지가 마운트되지 않고, F5를 눌러야만 보이는 상태가 됩니다.
 </script>
 
 {#if !isPublicRoute}
@@ -170,11 +160,9 @@
 			</div>
 		</header>
 
-		{#if showContent}
-			<main class="flex-1 p-8">
-				<slot />
-			</main>
-		{/if}
+		<main class="flex-1 p-8">
+			<slot />
+		</main>
 	</div>
 {:else}
 	<main>

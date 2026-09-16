@@ -1,15 +1,18 @@
 <script>
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstChartDateLabel, getKstDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
+	import { EARNED_CHART_DAYS, EARNED_CHART_ZERO_DATES } from '$lib/utils/fetchEarnedDailyRange';
 
 	export let email = '';
 	export let currencyLabel = '아데나';
-	export let days = 7;
+	export let days = EARNED_CHART_DAYS;
 	export let onClose = () => {};
 
 	let loading = false;
 	let error = null;
 	let items = [];
+
+	$: periodSum = items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
 
 	function formatMoney(value) {
 		return (Number(value) || 0).toLocaleString('ko-KR');
@@ -43,7 +46,7 @@
 
 			items = [...dates].reverse().map((date) => ({
 				date,
-				total: byDate[date] ?? 0,
+				total: EARNED_CHART_ZERO_DATES.has(date) ? 0 : (byDate[date] ?? 0),
 				isToday: date === today
 			}));
 		} catch (e) {
@@ -101,6 +104,10 @@
 		{:else if error}
 			<p class="text-red-600 text-sm py-4">{error}</p>
 		{:else}
+			<div class="mb-3 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2.5">
+				<p class="text-xs font-medium text-blue-700">{days}일 합계</p>
+				<p class="text-lg font-bold text-blue-900">{formatMoney(periodSum)}원</p>
+			</div>
 			<div class="space-y-2">
 				{#each items as item}
 					<div class="flex justify-between items-center rounded-lg px-3 py-2 {item.isToday ? 'bg-orange-50' : 'bg-slate-50'}">

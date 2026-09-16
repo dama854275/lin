@@ -12,7 +12,7 @@
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
-	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData } from '$lib/utils/fetchEarnedDailyRange';
+	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData, EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
 	// import { fetchLastIncreaseBatch } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
@@ -61,9 +61,9 @@
 	$: totalEarnedToday = sumEarnedFromMap(filteredMembers, earnedByEmail);
 	$: totalEarnedYesterday = sumEarnedFromMap(filteredMembers, earnedYesterdayByEmail);
 
-	// 최근 7일 수익 차트
+	// 최근 30일 수익 차트
 	let earnedRangeByDate = {};
-	let earnedRangeDates = getKstRecentDateStrings(7);
+	let earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
 	let earnedRangeLoading = false;
 	let earnedRangeError = null;
 
@@ -76,7 +76,7 @@
 
 	$: dailyEarningsChartItems = aggregateEarnedChartData(
 		earnedRangeByDate,
-		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(7),
+		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(EARNED_CHART_DAYS),
 		filteredEmailSet,
 		getKstDateString()
 	);
@@ -348,14 +348,14 @@
 		earnedRangeError = null;
 
 		try {
-			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, 7);
+			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, EARNED_CHART_DAYS);
 			earnedRangeByDate = byDate;
 			earnedRangeDates = dates;
 		} catch (e) {
 			console.error('earned range fetch error:', e);
 			earnedRangeError = '날짜별 획득 아데나 차트를 불러오는 중 오류가 발생했습니다.';
 			earnedRangeByDate = {};
-			earnedRangeDates = getKstRecentDateStrings(7);
+			earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
 		} finally {
 			earnedRangeLoading = false;
 		}
@@ -813,7 +813,7 @@
 
 	<div class="bg-white rounded-lg shadow-md px-6 py-4 mb-4">
 		<div class="text-sm text-gray-600 leading-relaxed space-y-3">
-			<p>* 수집된 정보는 약 1시간 주기로 업데이트 됩니다</p>
+			<p>* 수집된 정보는 약 1시간 주기로 업데이트 됩니다 ( 단 사냥터 값은 실시간 )</p>
 			<p>* 이메일을 클릭하면 일별 획득 내역을 확인 할 수 있습니다</p>
 			<p>* 프로그램을 처음 실행하는 코드는 보유 아데나가 '오늘 획득'에 반영되어 큰 값이 적용 될 수 있습니다</p>
 			<p>* 감소된 아데나는 계산에서 제외 됩니다 오직 증가된 아데나만 계산에 포함됩니다</p>

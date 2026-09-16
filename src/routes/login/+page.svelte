@@ -13,9 +13,17 @@
 
 	onMount(() => {
 		return subscribeUserEmail(user, (currentUser) => {
-			if (currentUser) {
-				goto('/');
+			if (!currentUser?.email) return;
+			const loginEmail = String(currentUser.email).trim().toLowerCase();
+			if (isZGroupAccount(loginEmail)) {
+				goto('/monitor_2');
+				return;
 			}
+			if (isMaGroupAccount(loginEmail)) {
+				goto('/monitor_ma');
+				return;
+			}
+			goto('/');
 		});
 	});
 

@@ -1,5 +1,8 @@
 import { getKstRecentDateStrings } from '$lib/utils/parseAdena';
 
+export const EARNED_CHART_DAYS = 30;
+export const EARNED_CHART_ZERO_DATES = new Set(['2026-09-12']);
+
 function memberEmails(members) {
 	return Array.from(
 		new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
@@ -35,7 +38,7 @@ export async function fetchEarnedBatch(emails, dates) {
 // }
 
 /** referredMembers 기준 최근 N일 adena_daily 조회 → { [stat_date]: { [email]: earned_total } } */
-export async function fetchEarnedDailyRange(_supabase, members, dayCount = 7) {
+export async function fetchEarnedDailyRange(_supabase, members, dayCount = EARNED_CHART_DAYS) {
 	const emails = memberEmails(members);
 	const dates = getKstRecentDateStrings(dayCount);
 	const byDate = {};

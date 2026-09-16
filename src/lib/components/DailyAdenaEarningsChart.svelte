@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { formatKstChartDateLabel } from '$lib/utils/parseAdena';
+	import { EARNED_CHART_ZERO_DATES } from '$lib/utils/fetchEarnedDailyRange';
 
 	/** @type {{ date: string, total: number, isToday?: boolean }[]} */
 	export let items = [];
@@ -9,12 +10,13 @@
 	export let currencyLabel = '아데나';
 
 	const CHART_HEIGHT = 220;
-	const PADDING = { top: 28, right: 12, bottom: 36, left: 12 };
+	const PADDING = { top: 28, right: 48, bottom: 36, left: 12 };
 
 	// 색상 팔레트(의미 기반)
 	const COLORS = {
-		bar: '#3b82f6', // 기본(파랑)
-		barToday: '#f97316', // 오늘(주황)
+		barOdd: '#3b82f6',
+		barEven: '#94a3b8',
+		barToday: '#f97316',
 		text: '#0f172a',
 		muted: '#475569',
 		grid: '#e2e8f0'
@@ -24,7 +26,22 @@
 		return (Number(value) || 0).toLocaleString('ko-KR');
 	}
 
-	// 그래프 축 라벨용: 요일 없이 M. D. 형태
+	function formatAxisValue(value) {
+		const n = Math.max(0, Number(value) || 0);
+		if (n < 1) return '0';
+		if (n >= 100000000) {
+			const eok = n / 100000000;
+			const s = eok >= 10 ? String(Math.round(eok)) : eok.toFixed(1).replace(/\.0$/, '');
+			return `${s}억`;
+		}
+		if (n >= 10000) {
+			const man = n / 10000;
+			const s = man >= 10 ? String(Math.round(man)) : man.toFixed(1).replace(/\.0$/, '');
+			return `${s}만`;
+		}
+		return Math.round(n).toLocaleString('ko-KR');
+	}
+
 	function formatChartAxisLabel(dateStr) {
 		const date = new Date(`${dateStr}T12:00:00+09:00`);
 		return new Intl.DateTimeFormat('ko-KR', {
@@ -34,29 +51,61 @@
 		}).format(date);
 	}
 
-	// 그래프 표기용: 반올림 없이 버림 처리
-	function formatCompactTrunc(value) {
-		const n = Number(value) || 0;
-		if (n >= 100000000) return `${Math.floor(n / 100000000)}억`;
-		if (n >= 10000) return `${Math.floor(n / 10000)}만`;
-		return n.toLocaleString('ko-KR');
+	function isOddCalendarDay(dateStr) {
+		const day = Number(String(dateStr || '').slice(8, 10));
+		return Number.isFinite(day) && day % 2 === 1;
 	}
 
-	$: periodDays = items?.length || 0;
+	function barFill(item) {
+		if (item.isToday) return COLORS.barToday;
+		return isOddCalendarDay(item.date) ? COLORS.barOdd : COLORS.barEven;
+	}
+
+	function shouldShowAxisLabel(item, i, count) {
+		if (item.isToday || i === count - 1) return true;
+		if (i === 0) return true;
+		if (i % 7 !== 0) return false;
+		// 첫/끝(오늘) 라벨과 하루 차이로 겹치지 않게
+		if (i <= 1) return false;
+		if (count - 1 - i <= 1) return false;
+		return true;
+	}
+
+	function axisLabelAnchor(i, count) {
+		if (i === 0) return 'start';
+		if (i === count - 1) return 'end';
+		return 'middle';
+	}
+
+	$: displayItems = (items || []).map((item) => {
+		const dateKey = String(item?.date || '').slice(0, 10);
+		if (EARNED_CHART_ZERO_DATES.has(dateKey)) {
+			return { ...item, total: 0 };
+		}
+		return item;
+	});
+	$: periodDays = displayItems?.length || 0;
 	$: periodLabel = periodDays > 0 ? `${periodDays}일` : '';
 
-	$: maxTotal = Math.max(...items.map((i) => i.total), 1);
-	$: chartWidth = Math.max(containerWidth || items.length * 104, 200);
+	$: maxTotal = Math.max(...displayItems.map((i) => i.total), 1);
+	$: axisMax = Math.max(0, ...displayItems.map((i) => Number(i.total) || 0));
+	$: yTicks = [
+		{ ratio: 1, label: formatAxisValue(axisMax) },
+		{ ratio: 0.5, label: formatAxisValue(axisMax / 2) },
+		{ ratio: 0, label: '0' }
+	];
+	$: chartWidth = Math.max(containerWidth || 640, 200);
 	$: plotWidth = chartWidth - PADDING.left - PADDING.right;
 	$: plotHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom;
-	$: barWidth = items.length > 0 ? Math.min(48, (plotWidth / items.length) * 0.65) : 40;
-	$: sevenDaySum = items.reduce((s, i) => s + i.total, 0);
-	$: avgDaysCount = items.reduce((c, i) => c + (Number(i?.total) > 0 ? 1 : 0), 0);
+	$: slotWidth = displayItems.length > 0 ? plotWidth / displayItems.length : 0;
+	$: barWidth = displayItems.length > 0 ? Math.max(3, slotWidth * 0.42) : 4;
+	$: sevenDaySum = displayItems.reduce((s, i) => s + i.total, 0);
+	$: avgDaysCount = displayItems.reduce((c, i) => c + (Number(i?.total) > 0 ? 1 : 0), 0);
 	$: sevenDayAvg = avgDaysCount > 0 ? Math.round(sevenDaySum / avgDaysCount) : null;
 
 	let chartWrapEl = null;
 	let containerWidth = 0;
-	let tooltip = null; // { x, y, date, total }
+	let tooltip = null; // { x, y, date, total, placeLeft }
 	let resizeObserver = null;
 
 	function sizeChart(node) {
@@ -85,11 +134,14 @@
 	function setTooltip(e, item) {
 		if (!chartWrapEl || !item) return;
 		const rect = chartWrapEl.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		const y = e.clientY - rect.top;
 		tooltip = {
-			x: e.clientX - rect.left,
-			y: e.clientY - rect.top,
+			x,
+			y,
 			date: item.date,
-			total: Number(item.total) || 0
+			total: Number(item.total) || 0,
+			placeLeft: x > rect.width * 0.55
 		};
 	}
 
@@ -107,19 +159,19 @@
 		<div class="rounded-xl bg-red-50 border border-red-100 p-4">
 			<p class="text-red-600 text-base">{error}</p>
 		</div>
-	{:else if items.length === 0}
+	{:else if displayItems.length === 0}
 		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
 			<p class="text-gray-500 text-base">표시할 획득 {currencyLabel} 데이터가 없습니다.</p>
 		</div>
 	{:else}
 		<div class="flex flex-col lg:flex-row gap-6 items-start w-full">
 			<!-- 그래프(가로폭 꽉 채움) -->
-			<div class="relative flex-1 min-w-0 overflow-hidden rounded-xl bg-white border border-slate-200 p-4">
+			<div class="relative flex-1 min-w-0 overflow-visible rounded-xl bg-white border border-slate-200 p-4">
 				<div use:sizeChart class="relative w-full">
 				{#if tooltip}
 					<div
 						class="absolute z-10 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs shadow-lg pointer-events-none whitespace-nowrap"
-						style="left: {Math.min(Math.max(tooltip.x + 12, 8), (chartWrapEl?.clientWidth || 0) - 8)}px; top: {Math.max(tooltip.y - 44, 8)}px; transform: translateX(-0%);"
+						style="left: {tooltip.x}px; top: {Math.max(tooltip.y - 44, 8)}px; transform: {tooltip.placeLeft ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)'};"
 					>
 						<div class="font-semibold">{formatChartAxisLabel(tooltip.date)}</div>
 						<div class="mt-0.5">{formatFull(tooltip.total)}원</div>
@@ -131,21 +183,29 @@
 					height={CHART_HEIGHT}
 					class="block"
 					role="img"
-					aria-label={`최근 ${periodLabel} 획득 ${currencyLabel} 막대 그래프`}
+					aria-label={`최근 ${periodLabel} 획득 ${currencyLabel} 봉 그래프`}
 				>
 					<!-- 범례 -->
 					<g>
-						<circle cx={PADDING.left + 6} cy={14} r="5" fill={COLORS.bar} opacity="0.85" />
+						<rect x={PADDING.left} y={9} width="8" height="10" rx="1" fill={COLORS.barOdd} />
 						<text
-							x={PADDING.left + 18}
+							x={PADDING.left + 12}
 							y={18}
 							style="font-size: 11px; fill: {COLORS.muted}; font-weight: 600"
 						>
-							최근 {periodLabel}
+							홀수일
 						</text>
-						<circle cx={PADDING.left + 82} cy={14} r="5" fill={COLORS.barToday} />
+						<rect x={PADDING.left + 62} y={9} width="8" height="10" rx="1" fill={COLORS.barEven} />
 						<text
-							x={PADDING.left + 94}
+							x={PADDING.left + 74}
+							y={18}
+							style="font-size: 11px; fill: {COLORS.muted}; font-weight: 600"
+						>
+							짝수일
+						</text>
+						<rect x={PADDING.left + 128} y={9} width="8" height="10" rx="1" fill={COLORS.barToday} />
+						<text
+							x={PADDING.left + 140}
 							y={18}
 							style="font-size: 11px; fill: {COLORS.muted}; font-weight: 600"
 						>
@@ -167,58 +227,61 @@
 						/>
 					{/each}
 
-					{#each items as item, i}
-						{@const slotWidth = plotWidth / items.length}
+					{#each displayItems as item, i}
 						{@const cx = PADDING.left + slotWidth * i + slotWidth / 2}
 						{@const barH = maxTotal > 0 ? (item.total / maxTotal) * plotHeight : 0}
 						{@const barX = cx - barWidth / 2}
 						{@const barY = PADDING.top + plotHeight - barH}
-						<g class="group">
+						{@const fill = barFill(item)}
+						<g>
 							<rect
-								x={barX}
-								y={barY}
-								width={barWidth}
-								height={Math.max(barH, item.total > 0 ? 4 : 0)}
-								rx="6"
+								x={PADDING.left + slotWidth * i}
+								y={PADDING.top}
+								width={slotWidth}
+								height={plotHeight}
+								fill="transparent"
 								role="img"
 								aria-label={`${formatChartAxisLabel(item.date)} 획득 ${currencyLabel} ${formatFull(item.total)}원`}
-								fill={item.isToday ? COLORS.barToday : COLORS.bar}
-								opacity={item.isToday ? 1 : 0.82}
-								stroke={item.isToday ? '#c2410c' : '#1d4ed8'}
-								stroke-width={item.isToday ? 1.25 : 1}
 								on:mouseenter={(e) => setTooltip(e, item)}
 								on:mousemove={(e) => setTooltip(e, item)}
 								on:mouseleave={clearTooltip}
 							/>
-							{#if item.total > 0}
+							<rect
+								x={barX}
+								y={barY}
+								width={barWidth}
+								height={Math.max(barH, item.total > 0 ? 3 : 0)}
+								rx="1"
+								fill={fill}
+								pointer-events="none"
+							/>
+							{#if shouldShowAxisLabel(item, i, displayItems.length)}
 								<text
 									x={cx}
-									y={barY - 6}
-									text-anchor="middle"
-									style="font-size: 12px; font-weight: 850; fill: {item.isToday ? COLORS.barToday : COLORS.bar}"
+									y={CHART_HEIGHT - 10}
+									text-anchor={axisLabelAnchor(i, displayItems.length)}
+									style="font-size: 11px; fill: {item.isToday ? COLORS.barToday : COLORS.muted}; font-weight: {item.isToday ? 800 : 600}"
 								>
-									{formatCompactTrunc(item.total)}
-								</text>
-							{/if}
-							<text
-								x={cx}
-								y={CHART_HEIGHT - 10}
-								text-anchor="middle"
-								style="font-size: 14px; fill: {item.isToday ? COLORS.text : COLORS.muted}; font-weight: {item.isToday ? 900 : 700}"
-							>
-								{formatChartAxisLabel(item.date)}
-							</text>
-							{#if item.isToday}
-								<text
-									x={cx}
-									y={CHART_HEIGHT - 22}
-									text-anchor="middle"
-									style="font-size: 12px; fill: {COLORS.barToday}; font-weight: 950"
-								>
-									오늘
+									{formatChartAxisLabel(item.date)}
 								</text>
 							{/if}
 						</g>
+					{/each}
+
+					<!-- Y값: 막대 오른쪽 좁은 칸 (오늘 봉과 겹치지 않음) -->
+					{#each yTicks as tick}
+						{@const y = PADDING.top + plotHeight * (1 - tick.ratio)}
+						<text
+							x={chartWidth - PADDING.right + 4}
+							y={y}
+							dy={tick.ratio === 1 ? 5 : tick.ratio === 0 ? -5 : 0}
+							text-anchor="start"
+							dominant-baseline="middle"
+							pointer-events="none"
+							style="font-size: 13px; fill: {COLORS.muted}; font-weight: 700;"
+						>
+							{tick.label}
+						</text>
 					{/each}
 				</svg>
 				</div>
@@ -236,8 +299,8 @@
 						{#if sevenDayAvg === null}-{:else}{formatFull(sevenDayAvg)}{/if}
 					</p>
 				</div>
-				{#if items.length > 0}
-					{@const peak = items.reduce((a, b) => (a.total >= b.total ? a : b), items[0])}
+				{#if displayItems.length > 0}
+					{@const peak = displayItems.reduce((a, b) => (a.total >= b.total ? a : b), displayItems[0])}
 					<div class="w-full rounded-lg bg-amber-50 border border-amber-100 px-4 py-3">
 						<p class="text-xs font-medium text-amber-700 mb-0.5">최고 획득일</p>
 						<p class="text-sm font-semibold text-amber-900">{formatKstChartDateLabel(peak.date)}</p>
