@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
-	import { fetchAllRows } from '$lib/supabase/fetchAll';
 	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
@@ -11,8 +10,14 @@
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
-	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
-	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData, EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
+	import { getKstDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
+	import { EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
+	import {
+		fetchZGroupMonitorLoad,
+		mapsFromMemberEarned,
+		chartTotalsByDate,
+		chartItemsFromTotals
+	} from '$lib/utils/fetchZGroupMonitor';
 	// import { fetchLastIncreaseBatch } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
@@ -49,7 +54,6 @@
 	let earnedLoading = false;
 	// let lastIncreaseLoading = false;
 	let earnedError = null;
-	let earnedStatDate = getKstDateString(); // YYYY-MM-DD (KST)
 	function sumEarnedFromMap(members, map) {
 		let sum = 0;
 		for (const m of members || []) {
@@ -64,23 +68,15 @@
 	$: totalEarnedToday = sumEarnedFromMap(filteredMembers, earnedByEmail);
 	$: totalEarnedYesterday = sumEarnedFromMap(filteredMembers, earnedYesterdayByEmail);
 
-	// 최근 30일 수익 차트
-	let earnedRangeByDate = {};
+	// 최근 30일 수익 차트 (그룹 전체 합, 첫 로드 RPC)
+	let earnedChartByDate = {};
 	let earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
 	let earnedRangeLoading = false;
 	let earnedRangeError = null;
 
-	$: filteredEmailSet = new Set(
-		(filteredMembers || [])
-			.filter((m) => !isStaleMember(m))
-			.map((m) => (m?.email || '').trim().toLowerCase())
-			.filter(Boolean)
-	);
-
-	$: dailyEarningsChartItems = aggregateEarnedChartData(
-		earnedRangeByDate,
+	$: dailyEarningsChartItems = chartItemsFromTotals(
 		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(EARNED_CHART_DAYS),
-		filteredEmailSet,
+		earnedChartByDate,
 		getKstDateString()
 	);
 	
@@ -282,97 +278,6 @@
 		if (!cnt) return null;
 		return Math.floor(sum / cnt); // 버림
 	})();
-
-	async function fetchEarnedTotalsForMembers(members, statDate = getKstDateString()) {
-		const emails = Array.from(
-			new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
-		);
-		const yesterdayDate = getKstPreviousDateString(statDate);
-
-		earnedLoading = true;
-		earnedError = null;
-
-		try {
-			const todayMap = {};
-			const yesterdayMap = {};
-			const rows = emails.length
-				? await fetchEarnedBatch(emails, [statDate, yesterdayDate])
-				: [];
-
-			rows.forEach((row) => {
-				const e = String(row.email || '').trim().toLowerCase();
-				if (!e) return;
-				const amount = Number(row.earned_total) || 0;
-				const dateKey = String(row.stat_date || '').slice(0, 10);
-				if (dateKey === statDate) {
-					todayMap[e] = amount;
-				} else if (dateKey === yesterdayDate) {
-					yesterdayMap[e] = amount;
-				}
-			});
-
-			earnedByEmail = todayMap;
-			earnedYesterdayByEmail = yesterdayMap;
-		} catch (e) {
-			console.error('earned_total fetch error:', e);
-			earnedError = '획득 아데나 정보를 불러오는 중 오류가 발생했습니다.';
-			earnedByEmail = {};
-			earnedYesterdayByEmail = {};
-		} finally {
-			earnedLoading = false;
-		}
-	}
-
-	// async function fetchLastIncreasesForMembers(members) {
-	// 	const emails = Array.from(
-	// 		new Set((members || []).map((m) => (m?.email || '').trim().toLowerCase()).filter(Boolean))
-	// 	);
-	//
-	// 	lastIncreaseLoading = true;
-	// 	try {
-	// 		const rows = emails.length ? await fetchLastIncreaseBatch(emails) : [];
-	// 		const map = {};
-	// 		rows.forEach((row) => {
-	// 			const e = String(row.email || '').trim().toLowerCase();
-	// 			if (!e) return;
-	// 			map[e] = Number(row.last_increase) || 0;
-	// 		});
-	// 		lastIncreaseByEmail = map;
-	// 	} catch (e) {
-	// 		console.error('last_increase fetch error:', e);
-	// 		lastIncreaseByEmail = {};
-	// 	} finally {
-	// 		lastIncreaseLoading = false;
-	// 	}
-	// }
-
-	async function fetchEarnedRangeForMembers(members) {
-		earnedRangeLoading = true;
-		earnedRangeError = null;
-
-		try {
-			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, EARNED_CHART_DAYS);
-			earnedRangeByDate = byDate;
-			earnedRangeDates = dates;
-		} catch (e) {
-			console.error('earned range fetch error:', e);
-			earnedRangeError = '날짜별 획득 아데나 차트를 불러오는 중 오류가 발생했습니다.';
-			earnedRangeByDate = {};
-			earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
-		} finally {
-			earnedRangeLoading = false;
-		}
-	}
-
-	// 날짜 변경 시(또는 목록 갱신 후) 선택 날짜의 earned_total 재조회
-	$: if (browser && referredMembers && referredMembers.length > 0 && earnedStatDate) {
-		fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
-	}
-
-	$: if (browser && referredMembers && referredMembers.length > 0) {
-		fetchEarnedRangeForMembers(referredMembers);
-		// fetchLastIncreasesForMembers(referredMembers);
-	}
 
 	// 필터링된 회원 목록 계산
 	$: filteredMembers = referredMembers
@@ -667,31 +572,45 @@
 
 		membersFetchInFlight = true;
 		loading = true;
+		earnedLoading = true;
+		earnedRangeLoading = true;
 		error = null;
+		earnedError = null;
+		earnedRangeError = null;
 		listTruncated = false;
 
 		try {
-			const { data, error: fetchError, truncated } = await fetchAllRows(() =>
-				supabase
-					.from('user_info')
-					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3')
-					.gte('email', bounds.start)
-					.lt('email', bounds.end)
-					.order('email', { ascending: true })
+			const payload = await fetchZGroupMonitorLoad({
+				emailStart: bounds.start,
+				emailEnd: bounds.end,
+				dayCount: EARNED_CHART_DAYS
+			});
+
+			referredMembers = (payload.members || []).filter((m) => isSameZGroup(m?.email, prefix));
+
+			const { todayMap, yesterdayMap } = mapsFromMemberEarned(
+				payload.memberEarned,
+				payload.today,
+				payload.yesterday
 			);
-
-			if (fetchError) {
-				error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
-				return;
-			}
-
-			listTruncated = !!truncated;
-			referredMembers = (data || []).filter((m) => isSameZGroup(m?.email, prefix));
-			await fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
+			earnedByEmail = todayMap;
+			earnedYesterdayByEmail = yesterdayMap;
+			earnedChartByDate = chartTotalsByDate(payload.chart);
+			earnedRangeDates = payload.dates;
 		} catch (err) {
+			console.error('z-group monitor load error:', err);
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
+			referredMembers = [];
+			earnedByEmail = {};
+			earnedYesterdayByEmail = {};
+			earnedChartByDate = {};
+			earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
+			earnedError = '획득 아데나 정보를 불러오는 중 오류가 발생했습니다.';
+			earnedRangeError = '날짜별 획득 아데나 차트를 불러오는 중 오류가 발생했습니다.';
 		} finally {
 			loading = false;
+			earnedLoading = false;
+			earnedRangeLoading = false;
 			membersFetchInFlight = false;
 		}
 	}
