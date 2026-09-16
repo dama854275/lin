@@ -51,6 +51,18 @@
 		}).format(date);
 	}
 
+	function formatTooltipDate(dateStr) {
+		const date = new Date(`${dateStr}T12:00:00+09:00`);
+		const parts = new Intl.DateTimeFormat('en-US', {
+			month: 'numeric',
+			day: 'numeric',
+			timeZone: 'Asia/Seoul'
+		}).formatToParts(date);
+		const month = parts.find((p) => p.type === 'month')?.value;
+		const day = parts.find((p) => p.type === 'day')?.value;
+		return `${Number(month)}월 ${Number(day)}일`;
+	}
+
 	function isOddCalendarDay(dateStr) {
 		const day = Number(String(dateStr || '').slice(8, 10));
 		return Number.isFinite(day) && day % 2 === 1;
@@ -175,7 +187,7 @@
 					>
 						{#key tooltip.date}
 							<div class="chart-tooltip-flash px-4 py-3 rounded-xl bg-slate-900 text-white shadow-xl whitespace-nowrap">
-								<div class="text-sm font-semibold tracking-wide">{formatChartAxisLabel(tooltip.date)}</div>
+								<div class="text-sm font-semibold tracking-wide">{formatTooltipDate(tooltip.date)}</div>
 								<div class="mt-1 text-lg font-bold">{formatFull(tooltip.total)}</div>
 							</div>
 						{/key}
