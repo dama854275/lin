@@ -40,20 +40,26 @@ export async function POST({ request }) {
 			return json({ success: false, error: '조회 인자가 올바르지 않습니다.' }, { status: 400 });
 		}
 
-		const [userInfoResult, adenaResult] = await Promise.all([
-			supabaseServer.rpc('user_info_by_email_range', {
-				p_email_start: emailStart,
-				p_email_end: emailEnd
-			}),
-			supabaseServer.rpc('adena_monitor_bundle', {
-				p_email_start: emailStart,
-				p_email_end: emailEnd,
-				p_date_from: dateFrom,
-				p_date_to: dateTo,
-				p_today: today,
-				p_yesterday: yesterday
-			})
-		]);
+		const chartOnly = !!body?.chartOnly;
+
+		const adenaPromise = supabaseServer.rpc('adena_monitor_bundle', {
+			p_email_start: emailStart,
+			p_email_end: emailEnd,
+			p_date_from: dateFrom,
+			p_date_to: dateTo,
+			p_today: today,
+			p_yesterday: yesterday
+		});
+
+		const [userInfoResult, adenaResult] = chartOnly
+			? [{ data: [], error: null }, await adenaPromise]
+			: await Promise.all([
+					supabaseServer.rpc('user_info_by_email_range', {
+						p_email_start: emailStart,
+						p_email_end: emailEnd
+					}),
+					adenaPromise
+				]);
 
 		if (userInfoResult.error) {
 			console.error('user_info_by_email_range rpc error:', userInfoResult.error);

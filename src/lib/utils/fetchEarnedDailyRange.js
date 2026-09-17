@@ -38,9 +38,12 @@ export async function fetchEarnedBatch(emails, dates) {
 // }
 
 /** referredMembers 기준 최근 N일 adena_daily 조회 → { [stat_date]: { [email]: earned_total } } */
-export async function fetchEarnedDailyRange(_supabase, members, dayCount = EARNED_CHART_DAYS) {
+export async function fetchEarnedDailyRange(_supabase, members, dayCount = EARNED_CHART_DAYS, datesOverride = null) {
 	const emails = memberEmails(members);
-	const dates = getKstRecentDateStrings(dayCount);
+	const dates =
+		Array.isArray(datesOverride) && datesOverride.length > 0
+			? datesOverride
+			: getKstRecentDateStrings(dayCount);
 	const byDate = {};
 	for (const d of dates) {
 		byDate[d] = {};

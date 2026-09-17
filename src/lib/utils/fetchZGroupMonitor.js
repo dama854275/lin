@@ -31,6 +31,36 @@ export async function fetchZGroupMonitorLoad({ emailStart, emailEnd, dayCount = 
 	};
 }
 
+export async function fetchZGroupChartRange({ emailStart, emailEnd, dates }) {
+	const rangeDates = Array.isArray(dates) ? dates : [];
+	if (rangeDates.length === 0) {
+		return { chart: [], dates: [] };
+	}
+	const today = getKstDateString();
+	const yesterday = getKstPreviousDateString(today);
+	const res = await fetch('/api/monitor/z-group-load', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			emailStart,
+			emailEnd,
+			dateFrom: rangeDates[0],
+			dateTo: rangeDates[rangeDates.length - 1],
+			today,
+			yesterday,
+			chartOnly: true
+		})
+	});
+	const payload = await res.json();
+	if (!res.ok || !payload?.success) {
+		throw new Error(payload?.error || 'z-group-chart failed');
+	}
+	return {
+		chart: Array.isArray(payload.chart) ? payload.chart : [],
+		dates: rangeDates
+	};
+}
+
 export function mapsFromMemberEarned(rows, today, yesterday) {
 	const todayMap = {};
 	const yesterdayMap = {};

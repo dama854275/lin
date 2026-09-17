@@ -1,13 +1,22 @@
 <script>
 	import { onMount } from 'svelte';
-	import { formatKstChartDateLabel } from '$lib/utils/parseAdena';
+	import { formatKstChartDateLabel, getKstRecentMonthOptions } from '$lib/utils/parseAdena';
 	import { EARNED_CHART_ZERO_DATES } from '$lib/utils/fetchEarnedDailyRange';
+	import { createEventDispatcher } from 'svelte';
 
 	/** @type {{ date: string, total: number, isToday?: boolean }[]} */
 	export let items = [];
 	export let loading = false;
 	export let error = null;
 	export let currencyLabel = '아데나';
+	export let showRangeControls = false;
+	export let rangeMode = 'recent';
+	export let selectedYearMonth = '';
+
+	const dispatch = createEventDispatcher();
+	$: monthOptions = getKstRecentMonthOptions();
+	let monthSelectValue = '';
+	$: monthSelectValue = rangeMode === 'month' ? selectedYearMonth || '' : '';
 
 	const CHART_HEIGHT = 220;
 	const PADDING = { top: 28, right: 48, bottom: 36, left: 12 };
@@ -101,7 +110,12 @@
 		return item;
 	});
 	$: periodDays = displayItems?.length || 0;
-	$: periodLabel = periodDays > 0 ? `${periodDays}일` : '';
+	$: periodLabel =
+		rangeMode === 'month' && selectedYearMonth
+			? `${Number(selectedYearMonth.slice(5, 7))}월`
+			: periodDays > 0
+				? `${periodDays}일`
+				: '';
 
 	$: maxTotal = Math.max(...displayItems.map((i) => i.total), 1);
 	$: axisMax = Math.max(0, ...displayItems.map((i) => Number(i.total) || 0));
@@ -164,16 +178,29 @@
 	function clearTooltip() {
 		tooltip = null;
 	}
+
+	function selectRecentRange() {
+		dispatch('rangechange', { mode: 'recent', yearMonth: '' });
+	}
+
+	function selectMonthRange(event) {
+		const value = String(event?.target?.value || '').trim();
+		if (!value) {
+			selectRecentRange();
+			return;
+		}
+		dispatch('rangechange', { mode: 'month', yearMonth: value });
+	}
 </script>
 
 <div class="w-full">
-	{#if loading}
-		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
-			<p class="text-gray-500 text-base">차트 데이터를 불러오는 중...</p>
-		</div>
-	{:else if error}
+	{#if error}
 		<div class="rounded-xl bg-red-50 border border-red-100 p-4">
 			<p class="text-red-600 text-base">{error}</p>
+		</div>
+	{:else if loading && displayItems.length === 0}
+		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
+			<p class="text-gray-500 text-base">차트 데이터를 불러오는 중...</p>
 		</div>
 	{:else if displayItems.length === 0}
 		<div class="flex items-center justify-center h-56 rounded-xl bg-slate-50 border border-slate-100">
@@ -181,8 +208,37 @@
 		</div>
 	{:else}
 		<div class="flex flex-col lg:flex-row gap-6 items-start w-full">
+			<div class="flex-1 min-w-0 w-full">
+				<div class="flex items-center justify-between gap-3 mb-2 min-w-0">
+					<h4 class="text-lg font-semibold text-gray-800 truncate">날짜별 획득 {currencyLabel}</h4>
+					{#if showRangeControls}
+						<div class="flex items-center gap-2 shrink-0">
+							<button
+								type="button"
+								class="px-3 py-1.5 text-sm rounded-lg border whitespace-nowrap transition-colors {rangeMode === 'recent'
+									? 'bg-blue-600 text-white border-blue-600 font-semibold'
+									: 'bg-white text-gray-700 border-slate-200 hover:bg-slate-50'}"
+								on:click={selectRecentRange}
+							>
+								최근 30일
+							</button>
+							<select
+								class="px-3 py-1.5 text-sm rounded-lg border bg-white whitespace-nowrap {rangeMode === 'month'
+									? 'border-blue-600 text-blue-700 font-semibold'
+									: 'border-slate-200 text-gray-700'}"
+								bind:value={monthSelectValue}
+								on:change={selectMonthRange}
+							>
+								<option value="">월 선택</option>
+								{#each monthOptions as opt}
+									<option value={opt.value}>{opt.label}</option>
+								{/each}
+							</select>
+						</div>
+					{/if}
+				</div>
 			<!-- 그래프(가로폭 꽉 채움) -->
-			<div class="relative flex-1 min-w-0 overflow-visible rounded-xl bg-white border border-slate-200 p-4">
+			<div class="relative min-w-0 overflow-visible rounded-xl bg-white border border-slate-200 p-4">
 				<div use:sizeChart class="relative w-full">
 				{#if tooltip}
 					<div
@@ -306,6 +362,7 @@
 					{/each}
 				</svg>
 				</div>
+			</div>
 			</div>
 
 			<!-- 요약(그래프 오른쪽) -->

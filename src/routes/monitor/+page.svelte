@@ -11,7 +11,7 @@
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
-	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
+	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings, getKstMonthDateStrings } from '$lib/utils/parseAdena';
 	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData, EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
 	// import { fetchLastIncreaseBatch } from '$lib/utils/fetchEarnedDailyRange';
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
@@ -66,6 +66,8 @@
 	let earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
 	let earnedRangeLoading = false;
 	let earnedRangeError = null;
+	let chartRangeMode = 'recent';
+	let chartYearMonth = '';
 
 	$: filteredEmailSet = new Set(
 		(filteredMembers || [])
@@ -343,12 +345,16 @@
 	// 	}
 	// }
 
-	async function fetchEarnedRangeForMembers(members) {
+	async function fetchEarnedRangeForMembers(members, datesOverride = null) {
 		earnedRangeLoading = true;
 		earnedRangeError = null;
 
 		try {
-			const { byDate, dates } = await fetchEarnedDailyRange(supabase, members, EARNED_CHART_DAYS);
+			const dates =
+				Array.isArray(datesOverride) && datesOverride.length > 0
+					? datesOverride
+					: getKstRecentDateStrings(EARNED_CHART_DAYS);
+			const { byDate } = await fetchEarnedDailyRange(supabase, members, EARNED_CHART_DAYS, dates);
 			earnedRangeByDate = byDate;
 			earnedRangeDates = dates;
 		} catch (e) {
@@ -359,6 +365,18 @@
 		} finally {
 			earnedRangeLoading = false;
 		}
+	}
+
+	async function handleChartRangeChange(event) {
+		const mode = event?.detail?.mode === 'month' ? 'month' : 'recent';
+		const yearMonth = mode === 'month' ? String(event?.detail?.yearMonth || '').slice(0, 7) : '';
+		chartRangeMode = mode;
+		chartYearMonth = yearMonth;
+		const dates =
+			mode === 'month' && yearMonth
+				? getKstMonthDateStrings(yearMonth)
+				: getKstRecentDateStrings(EARNED_CHART_DAYS);
+		await fetchEarnedRangeForMembers(referredMembers, dates);
 	}
 
 	// 날짜 변경 시(또는 목록 갱신 후) 선택 날짜의 earned_total 재조회
@@ -728,11 +746,14 @@
 	{#if !loading && !error && referredMembers.length > 0}
 		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 			<div class="border-b border-gray-200 pb-6 mb-6">
-				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 획득 아데나</h4>
 				<DailyAdenaEarningsChart
 					items={dailyEarningsChartItems}
 					loading={earnedRangeLoading}
 					error={earnedRangeError}
+					showRangeControls={true}
+					rangeMode={chartRangeMode}
+					selectedYearMonth={chartYearMonth}
+					on:rangechange={handleChartRangeChange}
 				/>
 			</div>
 

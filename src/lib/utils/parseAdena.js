@@ -23,7 +23,53 @@ export function getKstRecentDateStrings(count = 7, endDateStr = getKstDateString
 	return dates.reverse();
 }
 
-/** 차트 라벨: M/D (요일) */
+/** KST 기준 다음날 YYYY-MM-DD */
+export function getKstNextDateString(dateStr = getKstDateString()) {
+	const date = new Date(`${dateStr}T12:00:00+09:00`);
+	date.setDate(date.getDate() + 1);
+	return getKstDateString(date);
+}
+
+/** KST 달력 월(YYYY-MM)의 날짜 목록. 이번 달은 오늘까지 */
+export function getKstMonthDateStrings(yearMonth, todayStr = getKstDateString()) {
+	const key = String(yearMonth || '').slice(0, 7);
+	if (!/^\d{4}-\d{2}$/.test(key)) return [];
+	const [year, month] = key.split('-').map((v) => Number(v));
+	const nextMonth =
+		month === 12
+			? `${year + 1}-01-01`
+			: `${year}-${String(month + 1).padStart(2, '0')}-01`;
+	const dates = [];
+	let d = `${key}-01`;
+	while (d < nextMonth && d <= todayStr) {
+		dates.push(d);
+		d = getKstNextDateString(d);
+	}
+	return dates;
+}
+
+/** 2026년 6월부터 이번 달까지 (최신→과거). [{ value: '2026-09', label: '9월' }] */
+export function getKstRecentMonthOptions(_count = 12, todayStr = getKstDateString()) {
+	const startYear = 2026;
+	const startMonth = 6;
+	const [year, month] = todayStr.slice(0, 7).split('-').map((v) => Number(v));
+	const currentYear = year;
+	const options = [];
+	let y = year;
+	let m = month;
+	while (y > startYear || (y === startYear && m >= startMonth)) {
+		const value = `${y}-${String(m).padStart(2, '0')}`;
+		const label = y === currentYear ? `${m}월` : `${y}년 ${m}월`;
+		options.push({ value, label });
+		m -= 1;
+		if (m < 1) {
+			m = 12;
+			y -= 1;
+		}
+	}
+	return options;
+}
+
 export function formatKstChartDateLabel(dateStr) {
 	const date = new Date(`${dateStr}T12:00:00+09:00`);
 	const weekday = new Intl.DateTimeFormat('ko-KR', { weekday: 'short', timeZone: 'Asia/Seoul' }).format(

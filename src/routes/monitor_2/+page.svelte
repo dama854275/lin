@@ -10,10 +10,11 @@
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
 	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
-	import { getKstDateString, getKstRecentDateStrings } from '$lib/utils/parseAdena';
+	import { getKstDateString, getKstRecentDateStrings, getKstMonthDateStrings } from '$lib/utils/parseAdena';
 	import { EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
 	import {
 		fetchZGroupMonitorLoad,
+		fetchZGroupChartRange,
 		mapsFromMemberEarned,
 		chartTotalsByDate,
 		chartItemsFromTotals
@@ -73,6 +74,8 @@
 	let earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
 	let earnedRangeLoading = false;
 	let earnedRangeError = null;
+	let chartRangeMode = 'recent';
+	let chartYearMonth = '';
 
 	$: dailyEarningsChartItems = chartItemsFromTotals(
 		earnedRangeDates.length > 0 ? earnedRangeDates : getKstRecentDateStrings(EARNED_CHART_DAYS),
@@ -563,6 +566,44 @@
 		return display;
 	}
 
+	function getChartRangeDates(mode = chartRangeMode, yearMonth = chartYearMonth) {
+		if (mode === 'month' && yearMonth) {
+			return getKstMonthDateStrings(yearMonth);
+		}
+		return getKstRecentDateStrings(EARNED_CHART_DAYS);
+	}
+
+	async function handleChartRangeChange(event) {
+		const mode = event?.detail?.mode === 'month' ? 'month' : 'recent';
+		const yearMonth = mode === 'month' ? String(event?.detail?.yearMonth || '').slice(0, 7) : '';
+		chartRangeMode = mode;
+		chartYearMonth = yearMonth;
+
+		const prefix = getZGroupPrefix(currentUser?.email);
+		const bounds = getZGroupEmailBounds(prefix);
+		if (!prefix || !bounds) return;
+
+		const dates = getChartRangeDates(mode, yearMonth);
+		if (dates.length === 0) return;
+
+		earnedRangeLoading = true;
+		earnedRangeError = null;
+		try {
+			const payload = await fetchZGroupChartRange({
+				emailStart: bounds.start,
+				emailEnd: bounds.end,
+				dates
+			});
+			earnedChartByDate = chartTotalsByDate(payload.chart);
+			earnedRangeDates = payload.dates;
+		} catch (err) {
+			console.error('z-group chart range error:', err);
+			earnedRangeError = '날짜별 획득 아데나 차트를 불러오는 중 오류가 발생했습니다.';
+		} finally {
+			earnedRangeLoading = false;
+		}
+	}
+
 	async function fetchReferredMembers() {
 		if (!currentUser?.email || membersFetchInFlight) return;
 
@@ -597,6 +638,8 @@
 			earnedYesterdayByEmail = yesterdayMap;
 			earnedChartByDate = chartTotalsByDate(payload.chart);
 			earnedRangeDates = payload.dates;
+			chartRangeMode = 'recent';
+			chartYearMonth = '';
 		} catch (err) {
 			console.error('z-group monitor load error:', err);
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
@@ -666,11 +709,14 @@
 	{#if !loading && !error && referredMembers.length > 0}
 		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
 			<div class="border-b border-gray-200 pb-6 mb-6">
-				<h4 class="text-lg font-semibold text-gray-800 mb-1">날짜별 획득 아데나</h4>
 				<DailyAdenaEarningsChart
 					items={dailyEarningsChartItems}
 					loading={earnedRangeLoading}
 					error={earnedRangeError}
+					showRangeControls={true}
+					rangeMode={chartRangeMode}
+					selectedYearMonth={chartYearMonth}
+					on:rangechange={handleChartRangeChange}
 				/>
 			</div>
 
