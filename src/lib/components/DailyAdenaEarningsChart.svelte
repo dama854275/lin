@@ -250,8 +250,9 @@
 					{#each displayItems as item, i}
 						{@const cx = PADDING.left + slotWidth * i + slotWidth / 2}
 						{@const barH = maxTotal > 0 ? (item.total / maxTotal) * plotHeight : 0}
+						{@const drawH = Math.max(barH, 2)}
 						{@const barX = cx - barWidth / 2}
-						{@const barY = PADDING.top + plotHeight - barH}
+						{@const barY = PADDING.top + plotHeight - drawH}
 						{@const fill = barFill(item)}
 						<g>
 							<rect
@@ -270,7 +271,7 @@
 								x={barX}
 								y={barY}
 								width={barWidth}
-								height={Math.max(barH, item.total > 0 ? 3 : 0)}
+								height={drawH}
 								rx="1"
 								fill={fill}
 								pointer-events="none"
