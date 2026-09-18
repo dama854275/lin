@@ -4,12 +4,13 @@
 	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
+	import { isZGroupAccount, isMaGroupAccount, isBlockedMonitor2Account, resolveMonitor2LoginEmail } from '$lib/utils/groupPrefix';
 
 	let email = '';
 	let password = '';
 	let loading = false;
 	let error = null;
+	$: loginBlocked = isBlockedMonitor2Account(email);
 
 	onMount(() => {
 		return subscribeUserEmail(user, (currentUser) => {
@@ -37,13 +38,19 @@
 
 	async function handleLogin() {
 		try {
-			const trimmedEmail = email.trim().toLowerCase();
+			const typedEmail = email.trim().toLowerCase();
+			if (isBlockedMonitor2Account(typedEmail)) {
+				error = '로그인할 수 없는 계정입니다.';
+				return;
+			}
+
+			const loginEmail = resolveMonitor2LoginEmail(typedEmail);
 
 			loading = true;
 			error = null;
 
 			const { data, error: err } = await supabase.auth.signInWithPassword({
-				email: trimmedEmail,
+				email: loginEmail,
 				password: password.trim()
 			});
 
@@ -60,7 +67,7 @@
 			const { data: userInfo } = await supabase
 				.from('user_info')
 				.select('level')
-				.eq('email', trimmedEmail)
+				.eq('email', loginEmail)
 				.maybeSingle();
 
 			if (!isAllowedLevel(userInfo?.level)) {
@@ -70,9 +77,9 @@
 			}
 
 			if (String(userInfo?.level).trim() === '3') {
-				if (isZGroupAccount(trimmedEmail)) {
+				if (isZGroupAccount(loginEmail)) {
 					goto('/monitor_2');
-				} else if (isMaGroupAccount(trimmedEmail)) {
+				} else if (isMaGroupAccount(loginEmail)) {
 					goto('/monitor_ma');
 				} else {
 					await supabase.auth.signOut();
@@ -145,11 +152,14 @@
 						<div class="pt-4">
 							<button
 								type="submit"
-								disabled={loading}
+								disabled={loading || loginBlocked}
 								class="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-gradient-to-r from-sky-400 to-violet-400 hover:from-sky-500 hover:to-violet-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
 							>
 								{loading ? '로그인 중...' : '로그인'}
 							</button>
+							{#if loginBlocked}
+								<p class="mt-2 text-center text-sm text-gray-500">이 계정은 로그인할 수 없습니다.</p>
+							{/if}
 						</div>
 					</form>
 				</div>

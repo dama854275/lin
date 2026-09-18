@@ -36,3 +36,21 @@ export function isMaGroupAccount(email) {
 	const id = email.split('@')[0].toLowerCase();
 	return id.startsWith('ma_');
 }
+
+/** monitor_2 로그인 차단: 입력값이 z_0_ 로 시작하는 경우만 (z_lm_ 별칭은 허용) */
+export function isBlockedMonitor2Account(email) {
+	if (!email) return false;
+	const id = String(email).trim().toLowerCase().split('@')[0];
+	return id.startsWith('z_0_');
+}
+
+/** monitor_2 전용: z_lm_ 입력을 z_0_ 계정으로 바꿔 로그인 */
+export function resolveMonitor2LoginEmail(email) {
+	const raw = String(email || '').trim().toLowerCase();
+	if (!raw) return raw;
+	const at = raw.indexOf('@');
+	const id = at >= 0 ? raw.slice(0, at) : raw;
+	const domain = at >= 0 ? raw.slice(at) : '';
+	if (!id.startsWith('z_lm_')) return raw;
+	return `z_0_${id.slice('z_lm_'.length)}${domain}`;
+}
