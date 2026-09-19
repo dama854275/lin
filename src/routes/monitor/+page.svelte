@@ -841,7 +841,14 @@
 			<p>* 1시간 킬수와 1시간 아데나는 우측의 갱신시간 기준 최근 1시간 동안의 변화값 ( 1시간 내에 아이템 판매로 획득한 아데나도 포함 )</p>
 			<p>* '그룹 계정 목록'에서 1시간 킬수 / 1시간 획득량 / 오늘 획득 / 어제 획득 같은 분류 항목을 누르면 오름 정렬, 내림 정렬이 가능합니다</p>
 			<!-- <p>* 직전 획득은 마지막 수집과 그 직전 수집의 보유 차이입니다. 수집이 1시간 안에 여러 번이면 그 사이 증가분만 보입니다. 프로그램이 오래 멈춰 있었다면 틀린 값이 나올 수 있습니다.</p> -->
-			<p class="font-medium text-red-600">[ 주의 ] 다른 캐릭터로부터 받아 증가된 아데나도 획득량으로 계산됩니다, 단 한번에 10만 이상이 늘었을때는 반영되지 않습니다</p>
+			<div class="font-bold space-y-1">
+				<p class="text-red-600">[ 주의 ]</p>
+				<p>* 다른 캐릭터로부터 받아 증가된 아데나도 획득량으로 계산됩니다</p>
+				<p class="pl-4">단 한번에 10만 이상이 늘었을때는 반영되지 않습니다</p>
+				<p>* 이메일이 빨간 계정은 리니지 계정 만료일이 24시간 이내에 끝나는 계정입니다</p>
+				<p class="pl-4">가방에 있는 두루마리 만료일 기간이며 우측의 '계정 만료일'를 통해 확인 가능합니다</p>
+				<p>* 확인 대기 중, 확인 불가 라고 표시될때는 NC 웹사이트에서 '대표 캐릭터' 설정을 해야됩니다</p>
+			</div>
 		</div>
 	</div>
 
@@ -1023,7 +1030,7 @@
 								보유 아이템
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								계정 만료 날짜
+								계정 만료일
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-full">
 								갱신 시간
