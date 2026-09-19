@@ -9,7 +9,7 @@
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
-	import { formatKstMonitorDateTime } from '$lib/utils/formatDateTime';
+	import { formatKstMonitorDateTime, formatAccountExpireDate, isAccountExpireSoon } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstRecentDateStrings, getKstMonthDateStrings } from '$lib/utils/parseAdena';
 	import { EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
 	import {
@@ -100,6 +100,7 @@
 		hourlyKill: '-',
 		hourlyAdena: '-',
 		huntingGround: '-',
+		remainPeriod: '',
 		equipment: [],
 		items: []
 	};
@@ -1021,6 +1022,9 @@
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
 								보유 아이템
 							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								계정 만료 날짜
+							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-full">
 								갱신 시간
 							</th>
@@ -1029,12 +1033,13 @@
 					<tbody class="bg-white divide-y divide-gray-200">
 						{#each filteredMembers as member (member.email)}
 							{@const parsed = getMemberDisplay(member)}
+							{@const expireSoon = isAccountExpireSoon(parsed.remainPeriod)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
 									<button
 										type="button"
 										on:click={() => earnedPopupEmail = member.email}
-										class="text-blue-700 hover:text-blue-900 hover:underline"
+										class="{expireSoon ? 'text-red-600 font-bold hover:text-red-700' : 'text-blue-700 hover:text-blue-900'} hover:underline"
 									>
 										{formatEmailDisplay(member.email)}
 									</button>
@@ -1119,6 +1124,9 @@
 									{:else}
 										<span class="text-gray-400 whitespace-nowrap">확인 대기중</span>
 									{/if}
+								</td>
+								<td class="px-4 py-4 text-base whitespace-nowrap {expireSoon ? 'text-red-600' : 'text-gray-500'}">
+									{formatAccountExpireDate(parsed.remainPeriod)}
 								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap w-full">
 									{formatKstMonitorDateTime(member.api_at)}

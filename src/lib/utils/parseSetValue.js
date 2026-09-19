@@ -4,6 +4,14 @@
  * 예(set_value_2): [설정]^g장착아이템= 6 크로스 보우^g 4 티셔츠^g보유아이템=순간이동 주문서 (5)^g...
  * 예(set_value_3): [설정]^g사냥터=글던 1층
  */
+function takeRemainPeriodFromToken(token) {
+	const match = String(token).match(/^(.*?)(?:\^?g)?남은기간=(.*)$/);
+	if (!match || !String(token).includes('남은기간=')) {
+		return { token, remainPeriod: null };
+	}
+	return { token: match[1].trim(), remainPeriod: match[2].trim() };
+}
+
 export function parseSetValue(str) {
 	const result = {
 		level: null,
@@ -12,13 +20,15 @@ export function parseSetValue(str) {
 		hourlyKill: null,
 		hourlyAdena: null,
 		huntingGround: null,
+		remainPeriod: null,
 		equipment: [],
 		items: []
 	};
 
 	if (!str || typeof str !== 'string') return result;
 
-	const tokens = str
+	const normalized = str.replace(/([^\^])g남은기간=/g, '$1^g남은기간=');
+	const tokens = normalized
 		.split('^g')
 		.map((t) => t.trim())
 		.filter((t) => t !== '');
@@ -53,17 +63,28 @@ export function parseSetValue(str) {
 				section = null;
 			} else if (key === '장착아이템') {
 				section = 'equipment';
-				if (value) result.equipment.push(value);
+				const item = takeRemainPeriodFromToken(value);
+				if (item.remainPeriod != null) result.remainPeriod = item.remainPeriod;
+				if (item.token) result.equipment.push(item.token);
 			} else if (key === '보유아이템') {
 				section = 'items';
-				if (value) result.items.push(value);
+				const item = takeRemainPeriodFromToken(value);
+				if (item.remainPeriod != null) result.remainPeriod = item.remainPeriod;
+				if (item.token) result.items.push(item.token);
+			} else if (key === '남은기간') {
+				result.remainPeriod = value;
+				section = null;
 			} else {
 				section = null;
 			}
 		} else if (section === 'equipment') {
-			result.equipment.push(token);
+			const item = takeRemainPeriodFromToken(token);
+			if (item.remainPeriod != null) result.remainPeriod = item.remainPeriod;
+			if (item.token) result.equipment.push(item.token);
 		} else if (section === 'items') {
-			result.items.push(token);
+			const item = takeRemainPeriodFromToken(token);
+			if (item.remainPeriod != null) result.remainPeriod = item.remainPeriod;
+			if (item.token) result.items.push(item.token);
 		}
 	}
 
@@ -86,6 +107,7 @@ export function mergeMemberSetValues(apiParsed, setValue1, setValue2, setValue3)
 		hourlyKill: s1.hourlyKill ?? '-',
 		hourlyAdena: s1.hourlyAdena ?? '-',
 		huntingGround: s3.huntingGround ?? '-',
+		remainPeriod: s2.remainPeriod ?? '',
 		equipment: s2.equipment,
 		items: s2.items
 	};
