@@ -1,4 +1,5 @@
 const EXPIRE_SOON_MS = (23 * 60 + 59) * 60 * 1000;
+const EXPIRE_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 
 function parseAccountExpireDate(raw) {
 	if (raw == null) return null;
@@ -9,7 +10,9 @@ function parseAccountExpireDate(raw) {
 	if (!Number.isFinite(n) || n === 0) return null;
 
 	const date = new Date(n > 1e12 ? n : n * 1000);
-	return isNaN(date.getTime()) ? null : date;
+	if (isNaN(date.getTime())) return null;
+	if (Date.now() - date.getTime() >= EXPIRE_STALE_AFTER_MS) return null;
+	return date;
 }
 
 /** KST 기준 갱신 시간 표시: "6월 5일 18:25" */
@@ -40,7 +43,7 @@ export function formatKstMonitorDateTime(dateTime) {
 	}
 }
 
-/** 만료까지 23시간 59분 이내(이미 지난 시간 포함)이면 true */
+/** 만료까지 23시간 59분 이내(이미 지난 시간 포함, 48시간 이상 지난 값은 제외)이면 true */
 export function isAccountExpireSoon(raw) {
 	const date = parseAccountExpireDate(raw);
 	if (!date) return false;
