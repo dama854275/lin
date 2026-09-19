@@ -51,7 +51,7 @@ async function setValue(email, password, text, column = 'set_value') {
 		return exists;
 	}
 	const now = new Date().toISOString();
-	const updatePayload = { [col]: value };
+	const updatePayload = { [col]: value, api_at: now };
 	const { error: updateError } = await supabaseServer
 		.from('user_info')
 		.update(updatePayload)
