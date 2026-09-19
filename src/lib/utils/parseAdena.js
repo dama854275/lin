@@ -117,9 +117,13 @@ export function hasAdenaChanged(prev, next) {
 	return prevHeld !== Number(next.held ?? 0);
 }
 
-/** API 수신 시 보유 증가분(마이너스·최초 기준선은 0) */
+/** API 수신 시 보유 증가분(마이너스·최초 기준선은 0). 10만 이상 점프는 획득에 넣지 않음 */
+export const ADENA_EARNED_JUMP_IGNORE = 100000;
+
 export function calculateStorageIncreaseDelta(prevStorage, newStorage) {
 	if (prevStorage === null || prevStorage === undefined) return 0;
 	const net = (Number(newStorage) || 0) - (Number(prevStorage) || 0);
-	return net > 0 ? net : 0;
+	if (net <= 0) return 0;
+	if (net >= ADENA_EARNED_JUMP_IGNORE) return 0;
+	return net;
 }

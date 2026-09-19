@@ -54,6 +54,7 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
  * 보유 아데나 증가분만 당일 earned_total 에 누적
  * - 기록이 없으면 기준점만 잡고 획득 0
  * - 이후(날짜가 바뀌어도) max(0, 이번 - 직전) 만 오늘 획득에 합산
+ * - 직전보다 10만 이상 뛰면 획득에 더하지 않고 기준만 갱신
  */
 export async function incrementAdenaDailyForToday(
 	supabase,
