@@ -31,6 +31,7 @@
 	let error = null;
 	let listTruncated = false;
 	let membersFetchInFlight = false;
+	let listRefreshing = false;
 	let fetchedForEmail = '';
 	
 	// 필터 상태
@@ -604,20 +605,25 @@
 		}
 	}
 
-	async function fetchReferredMembers() {
+	async function fetchReferredMembers({ keepChartRange = false } = {}) {
 		if (!currentUser?.email || membersFetchInFlight) return;
 
 		const prefix = getZGroupPrefix(currentUser.email);
 		const bounds = getZGroupEmailBounds(prefix);
 		if (!prefix || !bounds) return;
 
+		const keepMode = keepChartRange ? chartRangeMode : 'recent';
+		const keepMonth = keepChartRange ? chartYearMonth : '';
+		const isFirstLoad = referredMembers.length === 0;
+
 		membersFetchInFlight = true;
-		loading = true;
+		if (isFirstLoad) loading = true;
+		else listRefreshing = true;
 		earnedLoading = true;
-		earnedRangeLoading = true;
+		earnedRangeLoading = isFirstLoad;
 		error = null;
 		earnedError = null;
-		earnedRangeError = null;
+		if (isFirstLoad) earnedRangeError = null;
 		listTruncated = false;
 
 		try {
@@ -636,26 +642,49 @@
 			);
 			earnedByEmail = todayMap;
 			earnedYesterdayByEmail = yesterdayMap;
-			earnedChartByDate = chartTotalsByDate(payload.chart);
-			earnedRangeDates = payload.dates;
-			chartRangeMode = 'recent';
-			chartYearMonth = '';
+
+			if (keepMode === 'month' && keepMonth) {
+				chartRangeMode = keepMode;
+				chartYearMonth = keepMonth;
+				const dates = getKstMonthDateStrings(keepMonth);
+				if (dates.length > 0) {
+					const chartPayload = await fetchZGroupChartRange({
+						emailStart: bounds.start,
+						emailEnd: bounds.end,
+						dates
+					});
+					earnedChartByDate = chartTotalsByDate(chartPayload.chart);
+					earnedRangeDates = chartPayload.dates;
+				}
+			} else {
+				earnedChartByDate = chartTotalsByDate(payload.chart);
+				earnedRangeDates = payload.dates;
+				chartRangeMode = 'recent';
+				chartYearMonth = '';
+			}
 		} catch (err) {
 			console.error('z-group monitor load error:', err);
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
-			referredMembers = [];
-			earnedByEmail = {};
-			earnedYesterdayByEmail = {};
-			earnedChartByDate = {};
-			earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
+			if (isFirstLoad) {
+				referredMembers = [];
+				earnedByEmail = {};
+				earnedYesterdayByEmail = {};
+				earnedChartByDate = {};
+				earnedRangeDates = getKstRecentDateStrings(EARNED_CHART_DAYS);
+			}
 			earnedError = '획득 아데나 정보를 불러오는 중 오류가 발생했습니다.';
 			earnedRangeError = '날짜별 획득 아데나 차트를 불러오는 중 오류가 발생했습니다.';
 		} finally {
 			loading = false;
 			earnedLoading = false;
 			earnedRangeLoading = false;
+			listRefreshing = false;
 			membersFetchInFlight = false;
 		}
+	}
+
+	function refreshMemberList() {
+		fetchReferredMembers({ keepChartRange: true });
 	}
 
 	onMount(() => {
@@ -799,9 +828,9 @@
 		<div class="text-sm text-gray-600 leading-relaxed space-y-3">
 			<p>* 수집된 정보는 약 1시간 주기로 업데이트 됩니다 ( 단 사냥터 값은 현재위치 )</p>
 			<p>* 이메일을 클릭하면 일별 획득 내역을 확인 할 수 있습니다</p>
-			<p>* 프로그램을 처음 실행하는 코드는 보유 아데나가 '오늘 획득'에 반영되어 큰 값이 적용 될 수 있습니다</p>
 			<p>* 감소된 아데나는 계산에서 제외 됩니다 오직 증가된 아데나만 계산에 포함됩니다</p>
 			<p>* 1시간 킬수와 1시간 아데나는 최근 1시간 동안의 결과값 ( 갱신시간 기준 / 아이템 판매로 획득한 아데나도 포함 )</p>
+			<p>* 그룹 계정 목록에서 1시간 킬수 / 1시간 획득량 / 오늘 획득 / 어제 획득 같은 분류 항목을 누르면 오름 정렬, 내림 정렬이 가능합니다</p>
 			<!-- <p>* 직전 획득은 마지막 수집과 그 직전 수집의 보유 차이입니다. 수집이 1시간 안에 여러 번이면 그 사이 증가분만 보입니다. 프로그램이 오래 멈춰 있었다면 틀린 값이 나올 수 있습니다.</p> -->
 			<p class="font-medium text-red-600">[ 주의 ] 다른 캐릭터로부터 받아 증가된 아데나도 획득량으로 계산됩니다</p>
 		</div>
@@ -915,8 +944,16 @@
 	</div>
 
 	<div class="bg-white rounded-lg shadow-md p-6">
-		<div class="flex justify-between items-center mb-4">
+		<div class="flex justify-between items-center mb-4 gap-3">
 			<h3 class="text-2xl font-semibold">그룹 계정 목록</h3>
+			<button
+				type="button"
+				on:click={refreshMemberList}
+				disabled={loading || listRefreshing || membersFetchInFlight}
+				class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+			>
+				{listRefreshing ? '새로고침 중...' : '새로고침'}
+			</button>
 		</div>
 
 		{#if loading}
