@@ -3,6 +3,15 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width" />
+		<script>
+			try {
+				var path = location.pathname;
+				var onMonitor = path === '/monitor' || path === '/monitor_2';
+				if (onMonitor && localStorage.getItem('lin-theme') === 'dark') {
+					document.documentElement.classList.add('dark');
+				}
+			} catch (e) {}
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

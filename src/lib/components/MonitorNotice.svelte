@@ -19,17 +19,17 @@
 <div class="bg-white rounded-lg shadow-md mb-4 overflow-hidden">
 	<button
 		type="button"
-		class="w-full flex items-center justify-between gap-3 px-6 py-3 text-left hover:bg-gray-50 transition-colors"
+		class="w-full flex items-center justify-between gap-3 px-4 md:px-6 py-3 text-left hover:bg-gray-50 transition-colors"
 		on:click={toggle}
 		aria-expanded={open}
 	>
 		<div class="flex items-center gap-2 min-w-0">
-			<span class="text-sm font-semibold text-gray-800">안내 및 주의사항</span>
+			<span class="text-xs sm:text-sm font-semibold text-gray-800">안내 및 주의사항</span>
 			{#if !open}
 				<span class="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">주의</span>
 			{/if}
 		</div>
-		<span class="flex items-center gap-1.5 shrink-0 text-base font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-3 py-1.5">
+		<span class="flex items-center gap-1.5 shrink-0 text-sm sm:text-base font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2 sm:px-3 py-1 sm:py-1.5">
 			{open ? '접기' : '펼치기'}
 			<svg
 				class="w-5 h-5 text-blue-600 transition-transform {open ? 'rotate-180' : ''}"
@@ -47,7 +47,7 @@
 	</button>
 
 	{#if open}
-		<div class="px-6 pb-4 text-sm text-gray-600 leading-relaxed space-y-3 border-t border-gray-100 pt-4">
+		<div class="px-4 md:px-6 pb-4 text-xs sm:text-sm text-gray-600 leading-relaxed space-y-3 border-t border-gray-100 pt-4">
 			<p>* 아데나 관련 값들과 1시간 킬수는 10분 주기 / 장착장비·보유 아이템은 1시간 주기 / 사냥터는 실시간으로 갱신됩니다</p>
 			<p>* 감소된 아데나는 계산에서 제외 됩니다 오직 증가된 아데나만 계산에 포함됩니다</p>
 			<p>* 이메일을 클릭해 일별 획득 내역을 확인 할 수 있습니다</p>

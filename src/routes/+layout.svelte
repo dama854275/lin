@@ -13,6 +13,7 @@
 	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
 	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
 	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
+	import { theme, applyDocumentTheme } from '$lib/stores/theme';
 
 	let mounted = false;
 	let currentUserLevel = null;
@@ -52,6 +53,10 @@
 			? '/monitor_ma'
 			: '/monitor';
 	$: isMonitorActive = currentPath === '/monitor' || currentPath === '/monitor_2' || currentPath === '/monitor_ma';
+	$: isThemeableMonitor = currentPath === '/monitor' || currentPath === '/monitor_2';
+	$: if (browser) {
+		applyDocumentTheme(isThemeableMonitor && $theme === 'dark');
+	}
 	$: isZGroupUser = currentUser && isZGroupAccount(currentUser.email);
 	$: isMaGroupUser = currentUser && isMaGroupAccount(currentUser.email);
 	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : isMaGroupUser ? '/monitor_ma' : null;
@@ -124,34 +129,34 @@
 	<div class="min-h-screen bg-[#f6f7f8] flex flex-col">
 		<!-- 상단 가로 메뉴 -->
 		<header class="bg-white shadow-md">
-			<div class="flex items-center gap-8 px-6 py-4">
-				<h1 class="text-xl font-bold text-gray-800 whitespace-nowrap">리니지 클래식</h1>
+			<div class="flex items-center gap-3 sm:gap-8 px-3 sm:px-6 py-3 sm:py-4">
+				<h1 class="text-base sm:text-xl font-bold text-gray-800 whitespace-nowrap">리니지 클래식</h1>
 				<nav class="flex flex-row flex-wrap items-center gap-2">
 					{#if currentUser && currentUserLevel === null}
 						<!-- 로그인 중 등급 로딩 중일 때는 메뉴를 잠시 숨김 (깜빡임 방지) -->
 					{:else if isLevel3 && level3AllowedPath}
 						<a
 							href={level3AllowedPath}
-							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === level3AllowedPath ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							class="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base rounded-lg transition-colors whitespace-nowrap {currentPath === level3AllowedPath ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							캐릭터 모니터링
 						</a>
 					{:else}
 						<a
 							href="/"
-							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === '/' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							class="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base rounded-lg transition-colors whitespace-nowrap {currentPath === '/' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							계정 생성
 						</a>
 						<a
 							href="/account"
-							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {currentPath === '/account' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							class="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base rounded-lg transition-colors whitespace-nowrap {currentPath === '/account' ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							계정 관리
 						</a>
 						<a
 							href={monitorPath}
-							class="px-4 py-2 rounded-lg transition-colors whitespace-nowrap {isMonitorActive ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
+							class="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base rounded-lg transition-colors whitespace-nowrap {isMonitorActive ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}"
 						>
 							캐릭터 모니터링
 						</a>
@@ -160,7 +165,7 @@
 			</div>
 		</header>
 
-		<main class="flex-1 p-8">
+		<main class="flex-1 p-3 sm:p-5 md:p-8">
 			<slot />
 		</main>
 	</div>

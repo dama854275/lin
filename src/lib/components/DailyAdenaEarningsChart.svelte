@@ -3,6 +3,7 @@
 	import { formatKstChartDateLabel, getKstRecentMonthOptions } from '$lib/utils/parseAdena';
 	import { EARNED_CHART_ZERO_DATES } from '$lib/utils/fetchEarnedDailyRange';
 	import { createEventDispatcher } from 'svelte';
+	import { theme } from '$lib/stores/theme';
 
 	/** @type {{ date: string, total: number, isToday?: boolean }[]} */
 	export let items = [];
@@ -22,7 +23,7 @@
 	const PADDING = { top: 28, right: 48, bottom: 36, left: 12 };
 
 	// 색상 팔레트(의미 기반)
-	const COLORS = {
+	const LIGHT_COLORS = {
 		barOdd: '#3b82f6',
 		barEven: '#94a3b8',
 		barToday: '#f97316',
@@ -30,6 +31,15 @@
 		muted: '#475569',
 		grid: '#e2e8f0'
 	};
+	const DARK_COLORS = {
+		barOdd: '#60a5fa',
+		barEven: '#94a3b8',
+		barToday: '#fb923c',
+		text: '#f3f4f6',
+		muted: '#94a3b8',
+		grid: '#4b5563'
+	};
+	$: COLORS = $theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
 
 	function formatFull(value) {
 		return (Number(value) || 0).toLocaleString('ko-KR');
@@ -210,7 +220,7 @@
 		<div class="flex flex-col lg:flex-row gap-6 items-start w-full">
 			<div class="flex-1 min-w-0 w-full">
 				<div class="flex items-center justify-between gap-3 mb-2 min-w-0">
-					<h4 class="text-lg font-semibold text-gray-800 truncate">날짜별 획득 {currencyLabel}</h4>
+					<h4 class="text-base md:text-lg font-semibold text-gray-800 truncate">날짜별 획득 {currencyLabel}</h4>
 					{#if showRangeControls}
 						<div class="flex items-center gap-2 shrink-0">
 							<button
@@ -367,20 +377,20 @@
 
 			<!-- 요약(그래프 오른쪽) -->
 			<div class="w-full lg:w-[160px] ml-auto flex flex-col gap-3 lg:items-end lg:text-right">
-				<div class="w-full rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
-					<p class="text-xs font-medium text-blue-700 mb-0.5">{periodLabel} 합계</p>
+				<div class="w-full rounded-lg bg-blue-100 border border-blue-200 px-4 py-3">
+					<p class="monitor-card-title text-xs font-medium text-blue-700 mb-0.5">{periodLabel} 합계</p>
 					<p class="text-xl font-bold text-blue-900">{formatFull(sevenDaySum)}</p>
 				</div>
-				<div class="w-full rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
-					<p class="text-xs font-medium text-slate-500 mb-0.5">일평균</p>
+				<div class="w-full rounded-lg bg-slate-100 border border-slate-200 px-4 py-3">
+					<p class="monitor-card-title text-xs font-medium text-slate-500 mb-0.5">일평균</p>
 					<p class="text-xl font-bold text-slate-800">
 						{#if sevenDayAvg === null}-{:else}{formatFull(sevenDayAvg)}{/if}
 					</p>
 				</div>
 				{#if displayItems.length > 0}
 					{@const peak = displayItems.reduce((a, b) => (a.total >= b.total ? a : b), displayItems[0])}
-					<div class="w-full rounded-lg bg-amber-50 border border-amber-100 px-4 py-3">
-						<p class="text-xs font-medium text-amber-700 mb-0.5">최고 획득일</p>
+					<div class="w-full rounded-lg bg-amber-100 border border-amber-200 px-4 py-3">
+						<p class="monitor-card-title text-xs font-medium text-amber-700 mb-0.5">최고 획득일</p>
 						<p class="text-sm font-semibold text-amber-900">{formatKstChartDateLabel(peak.date)}</p>
 						<p class="text-lg font-bold text-amber-950">{formatFull(peak.total)}</p>
 					</div>

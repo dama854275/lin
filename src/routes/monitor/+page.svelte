@@ -17,6 +17,7 @@
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
 	import MonitorNotice from '$lib/components/MonitorNotice.svelte';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	let currentUser = null;
 	let referredMembers = [];
@@ -91,7 +92,6 @@
 	let memberListScroller = null;
 	let canScrollMemberListLeft = false;
 	let canScrollMemberListRight = false;
-	const MEMBER_LIST_SCROLL_STEP = 420;
 
 	const STALE_AFTER_DAYS = 11;
 	const EMPTY_MEMBER_DISPLAY = {
@@ -178,7 +178,9 @@
 
 	function scrollMemberList(direction) {
 		if (!memberListScroller) return;
-		memberListScroller.scrollBy({ left: direction * MEMBER_LIST_SCROLL_STEP, behavior: 'smooth' });
+		const el = memberListScroller;
+		const left = direction < 0 ? 0 : el.scrollWidth - el.clientWidth;
+		el.scrollTo({ left, behavior: 'smooth' });
 	}
 
 	$: if (browser && memberListScroller && filteredMembers) {
@@ -762,22 +764,25 @@
 	}
 </script>
 
-<div class="w-full max-w-[1500px] mx-auto px-4">
-	<div class="flex justify-between items-center mb-8">
-		<h2 class="text-4xl font-bold text-gray-900">캐릭터 모니터링</h2>
-		{#if currentUser}
-			<button
-				on:click={handleLogout}
-				class="px-5 py-2.5 bg-red-500 text-white text-base rounded-lg hover:bg-red-600 transition-colors"
-			>
-				로그아웃
-			</button>
-		{/if}
+<div class="monitor-page w-full max-w-[1500px] mx-auto px-2 sm:px-4">
+	<div class="flex flex-col gap-3 mb-6 md:mb-8 sm:flex-row sm:justify-between sm:items-center">
+		<h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">캐릭터 모니터링</h2>
+		<div class="flex items-center gap-2 sm:gap-3">
+			<ThemeToggle />
+			{#if currentUser}
+				<button
+					on:click={handleLogout}
+					class="px-3 py-2 sm:px-5 sm:py-2.5 bg-red-500 text-white text-sm sm:text-base rounded-lg hover:bg-red-600 transition-colors"
+				>
+					로그아웃
+				</button>
+			{/if}
+		</div>
 	</div>
 
 	<!-- 통계 섹션 -->
 	{#if !loading && !error && referredMembers.length > 0}
-		<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+		<div class="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
 			<div class="border-b border-gray-200 pb-6 mb-6">
 				<DailyAdenaEarningsChart
 					items={dailyEarningsChartItems}
@@ -790,10 +795,10 @@
 				/>
 			</div>
 
-			<h4 class="text-lg font-semibold text-gray-800 mb-4">요약</h4>
-			<div class="flex flex-row gap-4 items-start w-full min-w-0">
+			<h4 class="text-base md:text-lg font-semibold text-gray-800 mb-4">요약</h4>
+			<div class="flex flex-col md:flex-row gap-4 items-stretch md:items-start w-full min-w-0">
 				<!-- 아이템별 개수 -->
-				<div class="bg-green-50 rounded-lg p-4 w-[32%] max-w-[420px] min-w-0 shrink">
+				<div class="bg-green-100 rounded-lg p-3 md:p-4 w-full md:w-[32%] md:max-w-[420px] min-w-0 shrink">
 					<h4 class="text-base font-bold text-gray-600 mb-2">아이템별 보유 개수</h4>
 					<div class="max-h-48 overflow-y-scroll item-scrollbar pr-4" style="scrollbar-width: auto; scrollbar-color: #10b981 #d1fae5;">
 						{#if Object.keys(statistics.itemCounts).length === 0}
@@ -811,54 +816,50 @@
 					</div>
 				</div>
 
-				<div class="flex flex-col gap-4 flex-1 min-w-0 w-full">
-					<div class="grid grid-cols-3 gap-4">
-						<div class="bg-blue-50 rounded-lg p-4 min-h-[110px] min-w-0">
+				<div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 flex-1 min-w-0 w-full">
+						<div class="order-1 md:order-1 bg-blue-100 rounded-lg p-3 md:p-4 min-h-0 md:min-h-[110px] min-w-0">
 							<h4 class="text-base font-bold text-gray-600 mb-2 break-words">전체 보유 아데나</h4>
-							<p class="text-2xl font-bold text-blue-700 whitespace-nowrap">
+							<p class="text-xl md:text-2xl font-bold text-blue-700 whitespace-nowrap">
 								{formatMoney(statistics.totalMoney.toString())}
 							</p>
 						</div>
 
-						<div class="bg-emerald-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<div class="order-3 md:order-2 bg-emerald-100 rounded-lg p-3 md:p-4 min-h-0 md:min-h-[110px] min-w-0">
 							<h4 class="text-base font-bold text-gray-600 mb-2 break-words">오늘 획득 합계</h4>
-							<p class="text-2xl font-bold text-emerald-700 whitespace-nowrap">
+							<p class="text-xl md:text-2xl font-bold text-emerald-700 whitespace-nowrap">
 								{formatMoney(totalEarnedToday.toString())}
 							</p>
 							<p class="text-xs text-gray-500 mt-1">현재 진행 중</p>
 						</div>
 
-						<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<div class="order-5 md:order-3 bg-orange-100 rounded-lg p-3 md:p-4 min-h-0 md:min-h-[110px] min-w-0">
 							<h4 class="text-base font-bold text-gray-600 mb-2 break-words">어제 획득 합계</h4>
-							<p class="text-2xl font-bold text-orange-700 whitespace-nowrap">
+							<p class="text-xl md:text-2xl font-bold text-orange-700 whitespace-nowrap">
 								{formatMoney(totalEarnedYesterday.toString())}
 							</p>
 						</div>
-					</div>
 
-					<div class="grid grid-cols-3 gap-4">
-						<div class="bg-slate-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<div class="order-2 md:order-4 bg-slate-100 rounded-lg p-3 md:p-4 min-h-0 md:min-h-[110px] min-w-0">
 							<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">평균 레벨</h4>
-							<p class="text-2xl font-bold text-slate-800 whitespace-nowrap">
+							<p class="text-xl md:text-2xl font-bold text-slate-800 whitespace-nowrap">
 								{#if avgLevel === null}-{:else}{avgLevel}{/if}
 							</p>
 						</div>
 
-						<div class="bg-emerald-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<div class="order-4 md:order-5 bg-emerald-100 rounded-lg p-3 md:p-4 min-h-0 md:min-h-[110px] min-w-0">
 							<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">오늘 평균 획득</h4>
-							<p class="text-2xl font-bold text-emerald-700 whitespace-nowrap">
+							<p class="text-xl md:text-2xl font-bold text-emerald-700 whitespace-nowrap">
 								{#if avgEarnedToday === null}-{:else}{formatMoney(avgEarnedToday.toString())}{/if}
 							</p>
 							<p class="text-xs text-gray-500 mt-1">현재 진행 중</p>
 						</div>
 
-						<div class="bg-orange-50 rounded-lg p-4 min-h-[110px] min-w-0">
+						<div class="order-6 md:order-6 bg-orange-100 rounded-lg p-3 md:p-4 min-h-0 md:min-h-[110px] min-w-0">
 							<h4 class="text-base font-bold text-gray-600 mb-2 leading-snug break-words">어제 평균 획득</h4>
-							<p class="text-2xl font-bold text-orange-700 whitespace-nowrap">
+							<p class="text-xl md:text-2xl font-bold text-orange-700 whitespace-nowrap">
 								{#if avgEarnedYesterday === null}-{:else}{formatMoney(avgEarnedYesterday.toString())}{/if}
 							</p>
 						</div>
-					</div>
 				</div>
 
 			</div>
@@ -868,25 +869,25 @@
 	<MonitorNotice />
 
 	<div class="flex flex-wrap items-center gap-3 mb-4">
-		<div class="flex items-baseline gap-2 rounded-lg bg-emerald-50 px-3 py-2 border-2 border-emerald-300">
+		<div class="status-chip status-chip-run flex items-baseline gap-2 rounded-lg bg-emerald-50 px-3 py-2 border-2 border-emerald-300">
 			<span class="text-sm font-medium text-emerald-600">동작</span>
 			<span class="text-lg font-bold text-emerald-700">{accountStatus.running}</span>
 		</div>
-		<div class="flex items-baseline gap-2 rounded-lg bg-red-50 px-3 py-2 border-2 border-red-300">
+		<div class="status-chip status-chip-stop flex items-baseline gap-2 rounded-lg bg-red-50 px-3 py-2 border-2 border-red-300">
 			<span class="text-sm font-medium text-red-600">중지</span>
 			<span class="text-lg font-bold text-red-700">{accountStatus.stopped}</span>
 		</div>
-		<div class="flex items-baseline gap-2 rounded-lg bg-amber-50 px-3 py-2 border-2 border-amber-300">
+		<div class="status-chip status-chip-stale flex items-baseline gap-2 rounded-lg bg-amber-50 px-3 py-2 border-2 border-amber-300">
 			<span class="text-sm font-medium text-amber-600">장기 미접속</span>
 			<span class="text-lg font-bold text-amber-700">{accountStatus.stale}</span>
 		</div>
 	</div>
 
 	<!-- 필터 섹션 -->
-	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+	<div class="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6 min-w-0 overflow-hidden">
 		<!-- 첫 번째 줄: 문제 계정, 레벨, 보유 아데나 -->
-		<div class="flex flex-wrap gap-6 items-center mb-4">
-			<label class="flex items-center gap-2 cursor-pointer">
+		<div class="flex flex-col md:flex-row md:flex-wrap gap-3 md:gap-6 md:items-center mb-4 min-w-0">
+			<label class="flex items-center gap-2 cursor-pointer w-full md:w-auto">
 				<input
 					type="checkbox"
 					bind:checked={showStoppedOnly}
@@ -895,40 +896,40 @@
 				<span class="text-base text-gray-700">중지 상태만 보기</span>
 			</label>
 			
-			<div class="h-6 w-px bg-gray-300"></div>
+			<div class="hidden md:block h-6 w-px bg-gray-300"></div>
 
 			<!-- 레벨 필터 -->
-			<div class="flex items-center gap-2">
-				<span class="text-base text-gray-600 whitespace-nowrap">레벨:</span>
+			<div class="flex items-center gap-2 min-w-0 w-full md:w-auto">
+				<span class="text-base text-gray-600 whitespace-nowrap shrink-0">레벨:</span>
 				<input
 					type="text"
 					inputmode="numeric"
 					bind:value={levelFilterValue}
-					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-full min-w-0 md:w-20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				/>
 				<select
 					bind:value={levelFilterType}
-					class="px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+					class="px-3 py-2 border border-gray-300 rounded-lg text-base shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				>
 					<option value="이상">이상</option>
 					<option value="이하">이하</option>
 				</select>
 			</div>
 			
-			<div class="h-6 w-px bg-gray-300"></div>
+			<div class="hidden md:block h-6 w-px bg-gray-300"></div>
 			
 			<!-- 보유 아데나 필터 -->
-			<div class="flex items-center gap-2">
-				<span class="text-base text-gray-600 whitespace-nowrap">보유 아데나:</span>
+			<div class="flex items-center gap-2 min-w-0 w-full md:w-auto">
+				<span class="text-base text-gray-600 whitespace-nowrap shrink-0">보유 아데나:</span>
 				<input
 					type="text"
 					inputmode="numeric"
 					bind:value={adenFilterValue}
-					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+					class="px-3 py-2 border border-gray-300 rounded-lg text-base w-full min-w-0 md:w-24 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				/>
 				<select
 					bind:value={adenFilterType}
-					class="px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+					class="px-3 py-2 border border-gray-300 rounded-lg text-base shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				>
 					<option value="이상">이상</option>
 					<option value="이하">이하</option>
@@ -939,17 +940,17 @@
 				type="button"
 				on:click={resetFilters}
 				disabled={!hasActiveFilters}
-				class="ml-auto px-3 py-2 border border-gray-300 rounded-lg text-base text-gray-700 bg-white hover:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+				class="w-full md:w-auto md:ml-auto px-3 py-2 border border-gray-300 rounded-lg text-base text-gray-700 bg-white hover:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
 			>
 				필터 초기화
 			</button>
 		</div>
 		
 		<!-- 두 번째 줄: 통합 검색 -->
-		<div class="flex items-center gap-2">
+		<div class="flex flex-col md:flex-row md:items-center gap-2 min-w-0">
 			<select
 				bind:value={searchFilterType}
-				class="px-3 py-2 border border-gray-400 rounded-lg text-base font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+				class="w-full md:w-auto shrink-0 px-3 py-2 border border-gray-400 rounded-lg text-base font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 			>
 				<option value="이메일">이메일</option>
 				<option value="서버">서버</option>
@@ -960,12 +961,12 @@
 				type="text"
 				bind:value={searchFilterTerm}
 				placeholder={searchFilterType + ' 검색'}
-				class="px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[200px]"
+				class="w-full min-w-0 md:w-[220px] md:flex-none px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 			/>
 			{#if searchFilterType === '보유 아이템' || searchFilterType === '장착 장비'}
 				<select
 					bind:value={itemFilterType}
-					class="px-3 py-2 border border-gray-400 rounded-lg text-base font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+					class="w-full md:w-auto shrink-0 px-3 py-2 border border-gray-400 rounded-lg text-base font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 				>
 					<option value="보유">보유</option>
 					<option value="미보유">미보유</option>
@@ -976,16 +977,16 @@
 
 	<div class="bg-white rounded-lg shadow-md p-6">
 		<div class="grid grid-cols-3 items-center mb-4 gap-3">
-			<h3 class="text-2xl font-semibold justify-self-start">하위 계정 목록</h3>
-			<div class="justify-self-center inline-flex rounded-lg border border-gray-300 overflow-hidden">
+			<h3 class="text-lg md:text-2xl font-semibold justify-self-start">하위 계정 목록</h3>
+			<div class="justify-self-center inline-flex items-center gap-2">
 					<button
 						type="button"
 						on:click={() => scrollMemberList(-1)}
 						disabled={!canScrollMemberListLeft}
-						class="w-10 h-10 flex items-center justify-center border-r border-gray-300 {canScrollMemberListLeft ? 'bg-white text-gray-700 hover:bg-gray-50' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}"
+						class="member-scroll-btn {canScrollMemberListLeft ? 'is-on' : 'is-off'}"
 						aria-label="목록 왼쪽으로 스크롤"
 					>
-						<svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+						<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.83 10l3.94 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" />
 						</svg>
 					</button>
@@ -993,10 +994,10 @@
 						type="button"
 						on:click={() => scrollMemberList(1)}
 						disabled={!canScrollMemberListRight}
-						class="w-10 h-10 flex items-center justify-center {canScrollMemberListRight ? 'bg-white text-gray-700 hover:bg-gray-50' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}"
+						class="member-scroll-btn {canScrollMemberListRight ? 'is-on' : 'is-off'}"
 						aria-label="목록 오른쪽으로 스크롤"
 					>
-						<svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+						<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 							<path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.17 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
 						</svg>
 					</button>
@@ -1070,10 +1071,10 @@
 								보유 아이템
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								두루마리 만료일
+								갱신 시간
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								갱신 시간
+								두루마리 만료일
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-full">
 								코드 만료일
@@ -1177,11 +1178,11 @@
 										<span class="text-gray-400 whitespace-nowrap">확인 대기중</span>
 									{/if}
 								</td>
-								<td class="px-4 py-4 text-base whitespace-nowrap {accountExpireSoon ? 'text-red-600' : 'text-gray-500'}">
-									{formatAccountExpireDate(parsed.remainPeriod)}
-								</td>
 								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{formatKstMonitorDateTime(member.api_at)}
+								</td>
+								<td class="px-4 py-4 text-base whitespace-nowrap {accountExpireSoon ? 'text-red-600' : 'text-gray-500'}">
+									{formatAccountExpireDate(parsed.remainPeriod)}
 								</td>
 								<td class="px-4 py-4 text-base whitespace-nowrap w-full {codeExpireSoon ? 'text-red-600' : 'text-gray-500'}">
 									{formatAccountExpireDate(member.product_period)}
