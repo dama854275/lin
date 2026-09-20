@@ -6,11 +6,15 @@ function parseAccountExpireDate(raw) {
 	const text = String(raw).trim();
 	if (!text) return null;
 
+	let date = null;
 	const n = Number(text);
-	if (!Number.isFinite(n) || n === 0) return null;
+	if (Number.isFinite(n) && n !== 0 && !/[-T:]/.test(text)) {
+		date = new Date(n > 1e12 ? n : n * 1000);
+	} else {
+		date = new Date(text);
+	}
 
-	const date = new Date(n > 1e12 ? n : n * 1000);
-	if (isNaN(date.getTime())) return null;
+	if (!date || isNaN(date.getTime()) || date.getTime() === 0) return null;
 	if (Date.now() - date.getTime() >= EXPIRE_STALE_AFTER_MS) return null;
 	return date;
 }

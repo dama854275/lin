@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { supabaseServer } from '$lib/supabase/server.js';
+import { fetchAllRows } from '$lib/supabase/fetchAll.js';
 
 function normalizeBound(value) {
 	return String(value || '').trim().toLowerCase();
@@ -20,6 +21,22 @@ function parseRpcJson(value) {
 		}
 	}
 	return value;
+}
+
+function mergeProductPeriods(members, periodRows) {
+	const map = {};
+	for (const row of periodRows || []) {
+		const email = String(row?.email || '').trim().toLowerCase();
+		if (!email) continue;
+		map[email] = row.product_period ?? null;
+	}
+	return members.map((member) => {
+		const email = String(member?.email || '').trim().toLowerCase();
+		return {
+			...member,
+			product_period: member?.product_period ?? map[email] ?? null
+		};
+	});
 }
 
 /**
@@ -51,14 +68,26 @@ export async function POST({ request }) {
 			p_yesterday: yesterday
 		});
 
-		const [userInfoResult, adenaResult] = chartOnly
-			? [{ data: [], error: null }, await adenaPromise]
+		const periodPromise = chartOnly
+			? Promise.resolve({ data: [], error: null })
+			: fetchAllRows(() =>
+					supabaseServer
+						.from('user_info')
+						.select('email, product_period')
+						.gte('email', emailStart)
+						.lt('email', emailEnd)
+						.order('email', { ascending: true })
+				);
+
+		const [userInfoResult, adenaResult, periodResult] = chartOnly
+			? [{ data: [], error: null }, await adenaPromise, { data: [], error: null }]
 			: await Promise.all([
 					supabaseServer.rpc('user_info_by_email_range', {
 						p_email_start: emailStart,
 						p_email_end: emailEnd
 					}),
-					adenaPromise
+					adenaPromise,
+					periodPromise
 				]);
 
 		if (userInfoResult.error) {
@@ -70,9 +99,14 @@ export async function POST({ request }) {
 			return json({ success: false, error: '획득 아데나 정보를 불러오는 중 오류가 발생했습니다.' }, { status: 500 });
 		}
 
+		if (periodResult.error) {
+			console.error('user_info product_period fetch error:', periodResult.error);
+			return json({ success: false, error: '회원 목록을 불러오는 중 오류가 발생했습니다.' }, { status: 500 });
+		}
+
 		const membersRaw = parseRpcJson(userInfoResult.data);
 		const bundle = parseRpcJson(adenaResult.data) || {};
-		const members = Array.isArray(membersRaw) ? membersRaw : [];
+		const members = mergeProductPeriods(Array.isArray(membersRaw) ? membersRaw : [], periodResult.data);
 		const chart = Array.isArray(bundle.chart) ? bundle.chart : [];
 		const memberEarned = Array.isArray(bundle.members) ? bundle.members : [];
 

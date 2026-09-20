@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
@@ -88,6 +88,10 @@
 	let itemPopupMember = null;
 	let equipPopupMember = null;
 	let earnedPopupEmail = null;
+	let memberListScroller = null;
+	let canScrollMemberListLeft = false;
+	let canScrollMemberListRight = false;
+	const MEMBER_LIST_SCROLL_STEP = 420;
 
 	const STALE_AFTER_DAYS = 11;
 	const EMPTY_MEMBER_DISPLAY = {
@@ -159,6 +163,27 @@
 	// 	const key = (email || '').trim().toLowerCase();
 	// 	return Number(lastIncreaseByEmail?.[key] ?? 0) || 0;
 	// }
+
+	function updateMemberListScrollState() {
+		const el = memberListScroller;
+		if (!el) {
+			canScrollMemberListLeft = false;
+			canScrollMemberListRight = false;
+			return;
+		}
+		const maxScroll = el.scrollWidth - el.clientWidth;
+		canScrollMemberListLeft = el.scrollLeft > 1;
+		canScrollMemberListRight = maxScroll > 1 && el.scrollLeft < maxScroll - 1;
+	}
+
+	function scrollMemberList(direction) {
+		if (!memberListScroller) return;
+		memberListScroller.scrollBy({ left: direction * MEMBER_LIST_SCROLL_STEP, behavior: 'smooth' });
+	}
+
+	$: if (browser && memberListScroller && filteredMembers) {
+		tick().then(updateMemberListScrollState);
+	}
 
 	function resetFilters() {
 		showStoppedOnly = false;
@@ -688,7 +713,7 @@
 			const { data, error: fetchError, truncated } = await fetchAllRows(() =>
 				supabase
 					.from('user_info')
-					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3')
+					.select('email, api_value, api_at, set_value_1, set_value_2, set_value_3, product_period')
 					.eq('referrer_email', currentUser.email)
 					.order('email', { ascending: true })
 			);
@@ -711,7 +736,9 @@
 
 	onMount(() => {
 		if (!browser) return;
-		return subscribeUserEmail(user, async (u) => {
+		const onResize = () => updateMemberListScrollState();
+		window.addEventListener('resize', onResize);
+		const unsubscribe = subscribeUserEmail(user, async (u) => {
 			currentUser = u;
 			if (!u) {
 				goto('/login');
@@ -723,6 +750,10 @@
 				await fetchReferredMembers();
 			}
 		});
+		return () => {
+			window.removeEventListener('resize', onResize);
+			if (typeof unsubscribe === 'function') unsubscribe();
+		};
 	});
 
 	async function handleLogout() {
@@ -944,8 +975,33 @@
 	</div>
 
 	<div class="bg-white rounded-lg shadow-md p-6">
-		<div class="flex justify-between items-center mb-4">
-			<h3 class="text-2xl font-semibold">하위 계정 목록</h3>
+		<div class="grid grid-cols-3 items-center mb-4 gap-3">
+			<h3 class="text-2xl font-semibold justify-self-start">하위 계정 목록</h3>
+			<div class="justify-self-center inline-flex rounded-lg border border-gray-300 overflow-hidden">
+					<button
+						type="button"
+						on:click={() => scrollMemberList(-1)}
+						disabled={!canScrollMemberListLeft}
+						class="w-10 h-10 flex items-center justify-center border-r border-gray-300 {canScrollMemberListLeft ? 'bg-white text-gray-700 hover:bg-gray-50' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}"
+						aria-label="목록 왼쪽으로 스크롤"
+					>
+						<svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.83 10l3.94 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" />
+						</svg>
+					</button>
+					<button
+						type="button"
+						on:click={() => scrollMemberList(1)}
+						disabled={!canScrollMemberListRight}
+						class="w-10 h-10 flex items-center justify-center {canScrollMemberListRight ? 'bg-white text-gray-700 hover:bg-gray-50' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}"
+						aria-label="목록 오른쪽으로 스크롤"
+					>
+						<svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+							<path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.17 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+						</svg>
+					</button>
+			</div>
+			<div></div>
 		</div>
 
 		{#if loading}
@@ -965,7 +1021,7 @@
 				<p class="text-gray-500 text-base">필터 조건에 맞는 회원이 없습니다.</p>
 			</div>
 		{:else}
-			<div class="overflow-x-auto">
+			<div class="overflow-x-auto" bind:this={memberListScroller} on:scroll={updateMemberListScrollState}>
 				<table class="w-max min-w-full divide-y divide-gray-200">
 					<thead class="bg-gray-50">
 						<tr>
@@ -1014,17 +1070,22 @@
 								보유 아이템
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-								계정 만료일
+								두루마리 만료일
+							</th>
+							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+								갱신 시간
 							</th>
 							<th class="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-full">
-								갱신 시간
+								코드 만료일
 							</th>
 						</tr>
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
 						{#each filteredMembers as member (member.email)}
 							{@const parsed = getMemberDisplay(member)}
-							{@const expireSoon = isAccountExpireSoon(parsed.remainPeriod)}
+							{@const accountExpireSoon = isAccountExpireSoon(parsed.remainPeriod)}
+							{@const codeExpireSoon = isAccountExpireSoon(member.product_period)}
+							{@const expireSoon = accountExpireSoon || codeExpireSoon}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
 									<button
@@ -1116,11 +1177,14 @@
 										<span class="text-gray-400 whitespace-nowrap">확인 대기중</span>
 									{/if}
 								</td>
-								<td class="px-4 py-4 text-base whitespace-nowrap {expireSoon ? 'text-red-600' : 'text-gray-500'}">
+								<td class="px-4 py-4 text-base whitespace-nowrap {accountExpireSoon ? 'text-red-600' : 'text-gray-500'}">
 									{formatAccountExpireDate(parsed.remainPeriod)}
 								</td>
-								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap w-full">
+								<td class="px-4 py-4 text-base text-gray-500 whitespace-nowrap">
 									{formatKstMonitorDateTime(member.api_at)}
+								</td>
+								<td class="px-4 py-4 text-base whitespace-nowrap w-full {codeExpireSoon ? 'text-red-600' : 'text-gray-500'}">
+									{formatAccountExpireDate(member.product_period)}
 								</td>
 							</tr>
 						{/each}
