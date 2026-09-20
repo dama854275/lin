@@ -10,7 +10,7 @@
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
-	import { formatKstMonitorDateTime, formatAccountExpireDate, isAccountExpireSoon } from '$lib/utils/formatDateTime';
+	import { formatKstMonitorDateTime, formatAccountExpireDate, isAccountExpireSoon, isHourlyStatStale } from '$lib/utils/formatDateTime';
 	import { getKstDateString, getKstPreviousDateString, getKstRecentDateStrings, getKstMonthDateStrings } from '$lib/utils/parseAdena';
 	import { fetchEarnedBatch, fetchEarnedDailyRange, aggregateEarnedChartData, EARNED_CHART_DAYS } from '$lib/utils/fetchEarnedDailyRange';
 	// import { fetchLastIncreaseBatch } from '$lib/utils/fetchEarnedDailyRange';
@@ -700,6 +700,9 @@
 					member?.set_value_3
 				);
 		memberDisplayCache.set(member, display);
+		if (!isStaleMember(member) && isHourlyStatStale(member?.api_at)) {
+			return { ...display, hourlyKill: '0', hourlyAdena: '0' };
+		}
 		return display;
 	}
 

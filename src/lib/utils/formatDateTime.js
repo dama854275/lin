@@ -81,3 +81,13 @@ export function formatAccountExpireDate(raw) {
 		return '확인불가';
 	}
 }
+
+const HOURLY_STAT_STALE_MS = 60 * 60 * 1000;
+
+/** 갱신 시간이 현재보다 1시간 이상 지났으면 true */
+export function isHourlyStatStale(dateTime, now = Date.now()) {
+	if (!dateTime) return false;
+	const date = new Date(dateTime);
+	if (isNaN(date.getTime())) return false;
+	return now - date.getTime() >= HOURLY_STAT_STALE_MS;
+}
