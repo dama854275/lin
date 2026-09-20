@@ -1086,7 +1086,7 @@
 							{@const accountExpireSoon = isAccountExpireSoon(parsed.remainPeriod)}
 							{@const codeExpireSoon = isAccountExpireSoon(member.product_period)}
 							{@const expireSoon = accountExpireSoon || codeExpireSoon}
-							<tr class="hover:bg-gray-50">
+							<tr class="monitor-member-row">
 								<td class="px-4 py-4 text-base font-medium text-gray-900 whitespace-nowrap">
 									<button
 										type="button"

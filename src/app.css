@@ -240,6 +240,25 @@ html.dark .member-scroll-btn.is-off {
 	color: #6b7280;
 }
 
+.monitor-member-row:nth-child(odd) {
+	background-color: #ffffff;
+}
+.monitor-member-row:nth-child(even) {
+	background-color: #f9fafb;
+}
+.monitor-member-row:hover {
+	background-color: #e5e7eb;
+}
+html.dark .monitor-member-row:nth-child(odd) {
+	background-color: #273244;
+}
+html.dark .monitor-member-row:nth-child(even) {
+	background-color: #2b3648;
+}
+html.dark .monitor-member-row:hover {
+	background-color: #3f4c5e;
+}
+
 @media (max-width: 767px) {
 	.monitor-page table {
 		font-size: 0.75rem;
