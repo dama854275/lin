@@ -119,11 +119,33 @@ export function hasAdenaChanged(prev, next) {
 
 /** API 수신 시 보유 증가분(마이너스·최초 기준선은 0). 10만 이상 점프는 획득에 넣지 않음 */
 export const ADENA_EARNED_JUMP_IGNORE = 100000;
+const HELD_RECOVERY_MIN_TOLERANCE = 5000;
+const HELD_RECOVERY_RATIO = 0.05;
 
 export function calculateStorageIncreaseDelta(prevStorage, newStorage) {
 	if (prevStorage === null || prevStorage === undefined) return 0;
 	const net = (Number(newStorage) || 0) - (Number(prevStorage) || 0);
 	if (net <= 0) return 0;
 	if (net >= ADENA_EARNED_JUMP_IGNORE) return 0;
+	return net;
+}
+
+/** 직전 감소 후 그 이전 높은 값 근처로 돌아오면 복구로 본다 */
+export function isHeldAdenaRecovery(prev2Held, prevHeld, newHeld) {
+	if (prev2Held === null || prev2Held === undefined) return false;
+	if (prevHeld === null || prevHeld === undefined) return false;
+	const a = Number(prev2Held) || 0;
+	const b = Number(prevHeld) || 0;
+	const c = Number(newHeld) || 0;
+	if (b >= a || c <= b) return false;
+	const tolerance = Math.max(HELD_RECOVERY_MIN_TOLERANCE, Math.round(a * HELD_RECOVERY_RATIO));
+	return Math.abs(c - a) <= tolerance;
+}
+
+/** 오늘 획득에 더할 보유 증가분. 복구면 0 */
+export function calculateHeldEarnedDelta(prev2Held, prevHeld, newHeld) {
+	const net = calculateStorageIncreaseDelta(prevHeld, newHeld);
+	if (net <= 0) return 0;
+	if (isHeldAdenaRecovery(prev2Held, prevHeld, newHeld)) return 0;
 	return net;
 }

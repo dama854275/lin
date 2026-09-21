@@ -2,31 +2,35 @@ import {
 	extractAdenaFromSetValue1,
 	getKstDateString,
 	hasAdenaChanged,
-	calculateStorageIncreaseDelta
+	calculateHeldEarnedDelta
 } from '$lib/utils/parseAdena';
 
 /** set_value_1 저장 후 보유아데나 증가분만 adena_daily 에 누적 */
 export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue1Text) {
 	const adena = extractAdenaFromSetValue1(setValue1Text);
 
-	const { data: prev, error: prevError } = await supabase
+	const { data: prevRows, error: prevError } = await supabase
 		.from('adena_snapshots')
 		.select('storage_adena, held_adena, total_adena')
 		.eq('email', email)
 		.order('recorded_at', { ascending: false })
-		.limit(1)
-		.maybeSingle();
+		.limit(2);
 
 	if (prevError) {
 		console.error('adena snapshot prev lookup error:', prevError);
 		return { ok: false, error: prevError.message };
 	}
 
+	const rows = Array.isArray(prevRows) ? prevRows : [];
+	const prev = rows[0] || null;
+	const prev2 = rows[1] || null;
+
 	if (!hasAdenaChanged(prev, adena)) {
 		return { ok: true, inserted: false, adena };
 	}
 
 	const prevHeld = prev ? Number(prev.held_adena ?? 0) : null;
+	const prev2Held = prev2 ? Number(prev2.held_adena ?? 0) : null;
 
 	const { error: insertError } = await supabase.from('adena_snapshots').insert([
 		{
@@ -42,7 +46,14 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
 		return { ok: false, error: insertError.message, adena };
 	}
 
-	const dailyResult = await incrementAdenaDailyForToday(supabase, email, adena.held, prevHeld);
+	const dailyResult = await incrementAdenaDailyForToday(
+		supabase,
+		email,
+		adena.held,
+		prevHeld,
+		getKstDateString(),
+		prev2Held
+	);
 	if (!dailyResult.ok) {
 		return { ...dailyResult, adena };
 	}
@@ -55,16 +66,18 @@ export async function recordAdenaSnapshotFromSetValue1(supabase, email, setValue
  * - 기록이 없으면 기준점만 잡고 획득 0
  * - 이후(날짜가 바뀌어도) max(0, 이번 - 직전) 만 오늘 획득에 합산
  * - 직전보다 10만 이상 뛰면 획득에 더하지 않고 기준만 갱신
+ * - 직전 감소 후 그 이전 높은 값 근처로 돌아오면 복구로 보고 획득 0
  */
 export async function incrementAdenaDailyForToday(
 	supabase,
 	email,
 	newHeld,
 	prevHeld,
-	statDate = getKstDateString()
+	statDate = getKstDateString(),
+	prev2Held = null
 ) {
 	const held = Number(newHeld) || 0;
-	const delta = calculateStorageIncreaseDelta(prevHeld, held);
+	const delta = calculateHeldEarnedDelta(prev2Held, prevHeld, held);
 
 	const { data: existing, error: fetchError } = await supabase
 		.from('adena_daily')
