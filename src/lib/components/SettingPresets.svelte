@@ -6,6 +6,7 @@
 	import { isSettingsPresetAccount } from '$lib/utils/groupPrefix';
 	import { defaultSlotName, isDefaultSlotName, SLOT_COUNT } from '$lib/settings/filenameMap';
 	import { packSelectedFolder } from '$lib/settings/packFolder';
+	import settingsFolderGuide from '$lib/assets/settings-folder-guide.png';
 
 	const STORAGE_KEY = 'monitor-settings-presets-open-v1';
 
@@ -387,7 +388,7 @@
 				<div class="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 mb-4">
 					<p class="text-sm font-bold text-blue-800 mb-2">설정을 서버에 저장</p>
 					<img
-						src="/settings-folder-guide.png"
+						src={settingsFolderGuide}
 						alt="설정 폴더 안의 1, 2 폴더"
 						class="w-full rounded border border-blue-100 bg-white mb-3"
 					/>
