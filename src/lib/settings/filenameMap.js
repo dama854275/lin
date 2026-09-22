@@ -40,14 +40,13 @@ export function metaObjectPath(email) {
 	return `${String(email).trim().toLowerCase()}/meta.json`;
 }
 
-export function toZipIniName(originalName) {
-	const base = String(originalName || '')
-		.split(/[/\\]/)
-		.pop()
-		.trim();
-	if (!base.toLowerCase().endsWith('.ini')) return null;
-	if (!ALLOWED_INI_NAMES.has(base)) return null;
-	return base;
+export function toZipEntryName(file) {
+	const parts = splitRelativePath(file);
+	if (!parts.length) return null;
+	if (ALLOWED_FOLDER_NAMES.has(parts[0]) && parts.length > 1) {
+		return parts.slice(1).join('/');
+	}
+	return parts.join('/');
 }
 
 function splitRelativePath(file) {
@@ -72,28 +71,35 @@ export function validateFolderSelection(fileList) {
 	const roots = new Set(paths.map((parts) => parts[0]).filter(Boolean));
 	const rootName = [...roots][0] || '';
 
+	const flatFilesOnly = paths.every((parts) => parts.length === 1);
 	if (hasNestedNumbered || rootName === '설정') {
 		return { ok: false, error: '설정 폴더가 아니라 숫자 폴더 1 또는 2를 선택해 주세요.' };
 	}
-	if (roots.size !== 1 || !ALLOWED_FOLDER_NAMES.has(rootName)) {
+	if (!flatFilesOnly && (roots.size !== 1 || !ALLOWED_FOLDER_NAMES.has(rootName))) {
 		return { ok: false, error: '숫자 폴더 1 또는 2를 선택해 주세요.' };
 	}
 
-	const iniFiles = [];
+	const packFiles = [];
 	let totalBytes = 0;
 	for (const file of files) {
-		const zipName = toZipIniName(file.name);
-		if (!zipName) continue;
+		if (file.size <= 0) continue;
+		const zipName = toZipEntryName(file);
+		if (!zipName || zipName.endsWith('/')) continue;
 		totalBytes += file.size;
-		iniFiles.push({ file, zipName });
+		packFiles.push({ file, zipName });
 	}
 
-	if (!iniFiles.length) {
-		return { ok: false, error: '올릴 수 있는 .ini 파일이 없습니다.' };
+	if (!packFiles.length) {
+		return { ok: false, error: '선택한 폴더에 올릴 파일이 없습니다.' };
 	}
 	if (totalBytes > MAX_SETTINGS_BYTES) {
 		return { ok: false, error: '최대 10MB까지 올릴 수 있습니다.' };
 	}
 
-	return { ok: true, folderName: rootName, iniFiles, totalBytes };
+	return {
+		ok: true,
+		folderName: ALLOWED_FOLDER_NAMES.has(rootName) ? rootName : '선택 폴더',
+		iniFiles: packFiles,
+		totalBytes
+	};
 }

@@ -22,6 +22,7 @@
 	let loading = false;
 	let error = '';
 	let success = '';
+	let progress = '';
 	let busySlot = 0;
 	let folderInput;
 	let pendingSlot = 0;
@@ -122,6 +123,9 @@
 
 	function openFolderPicker(slotId) {
 		pendingSlot = slotId;
+		error = '';
+		success = '';
+		progress = `${slotId}번 폴더를 선택해 주세요.`;
 		folderInput?.click();
 	}
 
@@ -131,15 +135,20 @@
 		const slotId = pendingSlot;
 		input.value = '';
 		pendingSlot = 0;
-		if (!slotId || !files?.length) return;
+		if (!slotId || !files?.length) {
+			progress = '';
+			return;
+		}
 
 		busySlot = slotId;
 		error = '';
 		success = '';
 		try {
+			progress = `${slotId}번 압축 중...`;
 			const packed = await packSelectedFolder(files);
 			if (!packed.ok) throw new Error(packed.error);
 
+			progress = `${slotId}번 업로드 중...`;
 			const form = new FormData();
 			form.append('slot', String(slotId));
 			form.append('file', packed.blob, `${slotId}.zip`);
@@ -163,8 +172,10 @@
 						}
 					: slot
 			);
-			success = `${slotId}번에 폴더 ${packed.folderName} 설정을 올렸습니다.`;
+			progress = '';
+			success = `${slotId}번을 업로드했습니다.`;
 		} catch (err) {
+			progress = '';
 			error = err.message || '업로드에 실패했습니다.';
 		} finally {
 			busySlot = 0;
@@ -264,6 +275,9 @@
 				{/if}
 				{#if error}
 					<p class="text-xs text-red-600 mb-2">{error}</p>
+				{/if}
+				{#if progress}
+					<p class="text-xs text-blue-600 mb-2">{progress}</p>
 				{/if}
 				{#if success}
 					<p class="text-xs text-emerald-600 mb-2">{success}</p>
