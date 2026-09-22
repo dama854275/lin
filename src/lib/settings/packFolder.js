@@ -10,7 +10,7 @@ export async function packSelectedFolder(fileList) {
 	const entries = [];
 	for (const item of checked.iniFiles) {
 		const data = new Uint8Array(await item.file.arrayBuffer());
-		entries.push({ name: item.english, data });
+		entries.push({ name: item.zipName, data });
 	}
 
 	const bytes = buildZipBytes(entries);

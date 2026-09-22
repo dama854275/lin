@@ -33,11 +33,12 @@ function concat(parts) {
 	return out;
 }
 
-/** STORE(무압축) zip. 파일명은 이미 영문이어야 한다. */
+/** STORE(무압축) zip. 한글 파일명은 UTF-8 플래그로 넣는다. */
 export function buildZipBytes(entries) {
 	const locals = [];
 	const centrals = [];
 	let offset = 0;
+	const utf8Flag = 0x0800;
 
 	for (const entry of entries) {
 		const nameBytes = new TextEncoder().encode(entry.name);
@@ -46,7 +47,7 @@ export function buildZipBytes(entries) {
 		const local = concat([
 			u32(0x04034b50),
 			u16(20),
-			u16(0),
+			u16(utf8Flag),
 			u16(0),
 			u16(0),
 			u16(0),
@@ -62,7 +63,7 @@ export function buildZipBytes(entries) {
 			u32(0x02014b50),
 			u16(20),
 			u16(20),
-			u16(0),
+			u16(utf8Flag),
 			u16(0),
 			u16(0),
 			u16(0),

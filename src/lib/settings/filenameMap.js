@@ -3,20 +3,19 @@ export const SLOT_COUNT = 10;
 export const MAX_SETTINGS_BYTES = 10 * 1024 * 1024;
 export const ALLOWED_FOLDER_NAMES = new Set(['1', '2']);
 
-/** 로컬 한글 파일명 → zip 안 영문 파일명 */
-export const KOREAN_TO_ENGLISH = {
-	'설정.ini': 'setting.ini',
-	'개인창고보관list.ini': 'Personal_Storage_Inventory_List.ini',
-	'혈맹창고보관list.ini': 'Clan_Storage_Inventory_List.ini',
-	'무기상인list.ini': 'Weapon_Merchant_List.ini',
-	'방어구상인list.ini': 'Armor_Merchant_List.ini',
-	'잡화상인list.ini': 'General_Merchant_List.ini',
-	'소모품list.ini': 'Consumable_List.ini',
-	'줍기제외list.ini': 'Pickup_Exclude_List.ini',
-	'사냥제외list.ini': 'Hunt_Exclude_List.ini',
-	'사냥우선list.ini': 'Hunt_Priority_List.ini',
-	'사냥경계list.ini': 'Hunt_Alert_List.ini'
-};
+export const ALLOWED_INI_NAMES = new Set([
+	'설정.ini',
+	'개인창고보관list.ini',
+	'혈맹창고보관list.ini',
+	'무기상인list.ini',
+	'방어구상인list.ini',
+	'잡화상인list.ini',
+	'소모품list.ini',
+	'줍기제외list.ini',
+	'사냥제외list.ini',
+	'사냥우선list.ini',
+	'사냥경계list.ini'
+]);
 
 export function defaultSlotName(_slotId) {
 	return '';
@@ -41,13 +40,14 @@ export function metaObjectPath(email) {
 	return `${String(email).trim().toLowerCase()}/meta.json`;
 }
 
-export function toEnglishIniName(originalName) {
+export function toZipIniName(originalName) {
 	const base = String(originalName || '')
 		.split(/[/\\]/)
 		.pop()
 		.trim();
 	if (!base.toLowerCase().endsWith('.ini')) return null;
-	return KOREAN_TO_ENGLISH[base] || null;
+	if (!ALLOWED_INI_NAMES.has(base)) return null;
+	return base;
 }
 
 function splitRelativePath(file) {
@@ -82,10 +82,10 @@ export function validateFolderSelection(fileList) {
 	const iniFiles = [];
 	let totalBytes = 0;
 	for (const file of files) {
-		const english = toEnglishIniName(file.name);
-		if (!english) continue;
+		const zipName = toZipIniName(file.name);
+		if (!zipName) continue;
 		totalBytes += file.size;
-		iniFiles.push({ file, english });
+		iniFiles.push({ file, zipName });
 	}
 
 	if (!iniFiles.length) {
