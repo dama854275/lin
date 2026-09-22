@@ -7,6 +7,7 @@
 	import { defaultSlotName, isDefaultSlotName, SLOT_COUNT } from '$lib/settings/filenameMap';
 	import { packSelectedFolder } from '$lib/settings/packFolder';
 	import settingsFolderGuide from '$lib/assets/settings-folder-guide.png';
+	import settingsLoadGuide from '$lib/assets/settings-load-guide.png';
 
 	const STORAGE_KEY = 'monitor-settings-presets-open-v1';
 
@@ -302,7 +303,7 @@
 					{#each slots as slot (slot.slot_id)}
 						<div class="rounded-md border border-gray-200 px-3 py-2.5 space-y-2">
 							<div class="flex items-center justify-between gap-2">
-								<span class="text-sm font-bold text-gray-800">설정 번호 {slot.slot_id}</span>
+								<span class="text-sm font-bold text-gray-800">{slot.slot_id}번 설정</span>
 								<span
 									class="text-[11px] {slot.has_file
 										? 'text-emerald-600'
@@ -422,9 +423,16 @@
 
 				<div class="rounded-lg bg-orange-50 border border-orange-100 px-4 py-3">
 					<p class="text-sm font-bold text-orange-800 mb-2">서버에서 설정을 불러오기</p>
-					<p class="text-sm text-gray-700 leading-relaxed">
-						프로그램 10번 탭에서 불러오기 번호는 설정 번호만 입력하면 됩니다. ex) 1, 2, 3 ...
-					</p>
+					<div class="text-sm text-gray-700 leading-relaxed space-y-2 mb-3">
+						<p>프로그램 10번 탭에서 불러오기 번호는 설정 번호만 입력하면 됩니다. ex) 1, 2, 3 ...</p>
+						<p>그 후 '불러오기' 버튼을 누르면 불러오기가 진행되며 프로그램이 종료됩니다.</p>
+						<p>프로그램을 다시 실행하면 불러온 설정이 그대로 적용됩니다.</p>
+					</div>
+					<img
+						src={settingsLoadGuide}
+						alt="프로그램에서 설정 번호 입력 후 불러오기"
+						class="w-full rounded border border-orange-100 bg-white"
+					/>
 				</div>
 			</div>
 		</div>
