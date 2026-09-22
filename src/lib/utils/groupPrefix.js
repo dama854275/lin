@@ -44,6 +44,13 @@ export function isBlockedMonitor2Account(email) {
 	return id.startsWith('z_0_');
 }
 
+/** 설정 관리: 아이디(@ 앞)가 _01 로 끝나는 계정만 */
+export function isSettingsPresetAccount(email) {
+	if (!email) return false;
+	const id = String(email).trim().toLowerCase().split('@')[0];
+	return id.endsWith('_01');
+}
+
 /** monitor_2 전용: z_lm_ 입력을 z_0_ 계정으로 바꿔 로그인 */
 export function resolveMonitor2LoginEmail(email) {
 	const raw = String(email || '').trim().toLowerCase();

@@ -14,9 +14,17 @@ function readStoredTheme() {
 
 export const theme = writable(readStoredTheme());
 
+function isThemeablePath(pathname = browser ? window.location.pathname : '') {
+	return pathname === '/monitor' || pathname === '/monitor_2';
+}
+
 export function applyDocumentTheme(isDark) {
 	if (!browser) return;
 	document.documentElement.classList.toggle('dark', !!isDark);
+}
+
+export function syncDocumentTheme(pathname, currentTheme) {
+	applyDocumentTheme(isThemeablePath(pathname) && currentTheme === 'dark');
 }
 
 export function setTheme(next) {
@@ -28,6 +36,7 @@ export function setTheme(next) {
 		} catch {
 			/* ignore */
 		}
+		applyDocumentTheme(isThemeablePath() && value === 'dark');
 	}
 }
 
@@ -38,5 +47,6 @@ if (browser) {
 		} catch {
 			/* ignore */
 		}
+		applyDocumentTheme(isThemeablePath() && value === 'dark');
 	});
 }

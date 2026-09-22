@@ -5,7 +5,7 @@
 <script>
 	import '../app.css';
 	import { user, authReady } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
+	import { goto, afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/supabase/client';
@@ -13,7 +13,7 @@
 	import { accountBulkCreationInProgress } from '$lib/stores/accountCreation';
 	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
 	import { subscribeUserEmail } from '$lib/utils/subscribeUserEmail';
-	import { theme, applyDocumentTheme } from '$lib/stores/theme';
+	import { theme, syncDocumentTheme } from '$lib/stores/theme';
 
 	let mounted = false;
 	let currentUserLevel = null;
@@ -25,6 +25,7 @@
 		mounted = true;
 
 		if (!browser) return;
+		syncDocumentTheme($page.url.pathname, $theme);
 		return subscribeUserEmail(user, async (u) => {
 			if (u?.email) {
 				const email = u.email.toLowerCase();
@@ -53,10 +54,14 @@
 			? '/monitor_ma'
 			: '/monitor';
 	$: isMonitorActive = currentPath === '/monitor' || currentPath === '/monitor_2' || currentPath === '/monitor_ma';
-	$: isThemeableMonitor = currentPath === '/monitor' || currentPath === '/monitor_2';
 	$: if (browser) {
-		applyDocumentTheme(isThemeableMonitor && $theme === 'dark');
+		syncDocumentTheme(currentPath, $theme);
 	}
+
+	afterNavigate(() => {
+		if (!browser) return;
+		syncDocumentTheme($page.url.pathname, $theme);
+	});
 	$: isZGroupUser = currentUser && isZGroupAccount(currentUser.email);
 	$: isMaGroupUser = currentUser && isMaGroupAccount(currentUser.email);
 	$: level3AllowedPath = isZGroupUser ? '/monitor_2' : isMaGroupUser ? '/monitor_ma' : null;

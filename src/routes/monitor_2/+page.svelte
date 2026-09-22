@@ -23,6 +23,7 @@
 	import DailyAdenaEarningsChart from '$lib/components/DailyAdenaEarningsChart.svelte';
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
 	import MonitorNotice from '$lib/components/MonitorNotice.svelte';
+	import SettingPresets from '$lib/components/SettingPresets.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	let currentUser = null;
@@ -559,19 +560,20 @@
 
 	function getMemberDisplay(member) {
 		if (!member) return EMPTY_MEMBER_DISPLAY;
-		const cached = memberDisplayCache.get(member);
-		if (cached) return cached;
-		const display = isStaleMember(member)
-			? EMPTY_MEMBER_DISPLAY
-			: mergeMemberSetValues(
-					parseApiValue(member?.api_value),
-					member?.set_value_1,
-					member?.set_value_2,
-					member?.set_value_3
-				);
-		memberDisplayCache.set(member, display);
+		let display = memberDisplayCache.get(member);
+		if (!display) {
+			display = isStaleMember(member)
+				? EMPTY_MEMBER_DISPLAY
+				: mergeMemberSetValues(
+						parseApiValue(member?.api_value),
+						member?.set_value_1,
+						member?.set_value_2,
+						member?.set_value_3
+					);
+			memberDisplayCache.set(member, display);
+		}
 		if (!isStaleMember(member) && isHourlyStatStale(member?.api_at)) {
-			return { ...display, hourlyKill: '0', hourlyAdena: '0' };
+			return { ...display, hourlyKill: '-', hourlyAdena: '-' };
 		}
 		return display;
 	}
@@ -862,6 +864,7 @@
 	{/if}
 
 	<MonitorNotice />
+	<SettingPresets />
 
 	<div class="flex flex-wrap items-center gap-3 mb-4">
 		<div class="status-chip status-chip-run flex items-baseline gap-2 rounded-lg bg-emerald-50 px-3 py-2 border-2 border-emerald-300">
