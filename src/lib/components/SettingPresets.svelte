@@ -125,18 +125,24 @@
 		pendingSlot = slotId;
 		error = '';
 		success = '';
-		progress = `${slotId}번 폴더를 선택해 주세요.`;
+		progress = '설정 폴더에서 1 또는 2 폴더를 선택하세요';
 		folderInput?.click();
 	}
 
 	async function handleFolderPicked(event) {
 		const input = event.currentTarget;
-		const files = input.files;
+		const files = Array.from(input.files || []);
 		const slotId = pendingSlot;
-		input.value = '';
 		pendingSlot = 0;
-		if (!slotId || !files?.length) {
+		if (input) input.value = '';
+		if (!slotId) {
 			progress = '';
+			error = '설정 번호를 다시 선택한 뒤 업로드해 주세요.';
+			return;
+		}
+		if (!files.length) {
+			progress = '';
+			error = `${slotId}번 폴더에서 파일을 읽지 못했습니다. 다시 선택해 주세요.`;
 			return;
 		}
 
@@ -228,6 +234,15 @@
 </script>
 
 {#if allowed}
+	<input
+		bind:this={folderInput}
+		type="file"
+		class="sr-only"
+		webkitdirectory
+		directory
+		multiple
+		on:change={handleFolderPicked}
+	/>
 	<div class="bg-white rounded-lg shadow-md mb-4 overflow-hidden">
 		<div class="flex items-center justify-between gap-3 px-4 md:px-6 py-3">
 			<button
@@ -277,21 +292,11 @@
 					<p class="text-xs text-red-600 mb-2">{error}</p>
 				{/if}
 				{#if progress}
-					<p class="text-xs text-blue-600 mb-2">{progress}</p>
+					<p class="text-sm font-semibold text-blue-600 mb-2">{progress}</p>
 				{/if}
 				{#if success}
 					<p class="text-xs text-emerald-600 mb-2">{success}</p>
 				{/if}
-
-				<input
-					bind:this={folderInput}
-					type="file"
-					class="hidden"
-					webkitdirectory
-					directory
-					multiple
-					on:change={handleFolderPicked}
-				/>
 
 				<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
 					{#each slots as slot (slot.slot_id)}
