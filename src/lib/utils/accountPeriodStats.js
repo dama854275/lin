@@ -25,10 +25,15 @@ function getProductPeriodYearMonth(productPeriod) {
 	return getKstYearMonth(d);
 }
 
-/** 기간 통계·만료 필터에서 제외할 계정 (hh_, z_0 접두 이메일) */
+/** 모니터·계정 목록과 기간 통계에서 제외할 계정 (hh_, z_0, m_, ma_ 접두 이메일) */
 export function isExcludedFromPeriodStats(email) {
 	const key = (email || '').toLowerCase();
-	return key.startsWith('hh_') || key.startsWith('z_0');
+	return (
+		key.startsWith('hh_') ||
+		key.startsWith('z_0') ||
+		key.startsWith('m_') ||
+		key.startsWith('ma_')
+	);
 }
 
 /** 하위 계정 product_period 기준 통계 */

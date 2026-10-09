@@ -28,6 +28,11 @@
 	let bulkResetting = false;
 	let bulkProgress = { done: 0, total: 0, phase: '' };
 	let searchQuery = '';
+	let rangeFrom = '';
+	let rangeTo = '';
+	let rangeSelectHint = '';
+	let lastRangeAnchorEmail = null;
+	let skipMemberChange = false;
 	let showExpiringThisMonthOnly = false;
 	let showExpiringNextMonthOnly = false;
 	let grantHistory = [];
@@ -44,6 +49,8 @@
 
 	// 검색·만료 월 필터 적용 회원 목록
 	$: filteredMembers = referredMembers.filter((member) => {
+		if (isExcludedFromPeriodStats(member.email)) return false;
+
 		if (searchQuery.trim()) {
 			const query = searchQuery.trim().toLowerCase();
 			const queries = query.split(/\s+/).filter((q) => q.length > 0);
@@ -108,7 +115,7 @@
 				return;
 			}
 
-			referredMembers = data || [];
+			referredMembers = (data || []).filter((m) => !isExcludedFromPeriodStats(m?.email));
 		} catch (err) {
 			console.error('Error fetching referred members:', err);
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
@@ -284,14 +291,63 @@
 		}
 	}
 
-	function toggleMemberSelection(memberEmail) {
+	function getAccountNumber(email) {
+		const id = String(email || '').split('@')[0];
+		const match = id.match(/(\d+)$/);
+		if (!match) return null;
+		return parseInt(match[1], 10);
+	}
+
+	function handleMemberSelectClick(event, memberEmail) {
+		if (!event.shiftKey || !lastRangeAnchorEmail) return;
+
+		skipMemberChange = true;
+		const emails = filteredMembers.map((m) => m.email);
+		const a = emails.indexOf(lastRangeAnchorEmail);
+		const b = emails.indexOf(memberEmail);
+		if (a < 0 || b < 0) return;
+
+		const from = Math.min(a, b);
+		const to = Math.max(a, b);
 		const newSet = new Set(selectedMembers);
-		if (newSet.has(memberEmail)) {
-			newSet.delete(memberEmail);
-		} else {
-			newSet.add(memberEmail);
+		for (let i = from; i <= to; i++) newSet.add(emails[i]);
+		selectedMembers = newSet;
+	}
+
+	function handleMemberSelectChange(event, memberEmail) {
+		if (skipMemberChange) {
+			skipMemberChange = false;
+			return;
 		}
-		selectedMembers = newSet; // Svelte 반응성 트리거
+		lastRangeAnchorEmail = memberEmail;
+		const newSet = new Set(selectedMembers);
+		if (event.currentTarget.checked) newSet.add(memberEmail);
+		else newSet.delete(memberEmail);
+		selectedMembers = newSet;
+	}
+
+	function selectMembersByNumberRange() {
+		const from = parseInt(rangeFrom, 10);
+		const to = parseInt(rangeTo, 10);
+		if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < 0) {
+			rangeSelectHint = '시작 번호와 끝 번호를 입력하세요.';
+			return;
+		}
+
+		const lo = Math.min(from, to);
+		const hi = Math.max(from, to);
+		const newSet = new Set(selectedMembers);
+		let added = 0;
+		for (const member of filteredMembers) {
+			const n = getAccountNumber(member.email);
+			if (n !== null && n >= lo && n <= hi) {
+				if (!newSet.has(member.email)) added += 1;
+				newSet.add(member.email);
+			}
+		}
+		selectedMembers = newSet;
+		rangeSelectHint =
+			added > 0 ? `${lo}~${hi}번 ${added}명을 선택했습니다.` : `${lo}~${hi}번에 해당하는 계정이 없습니다.`;
 	}
 
 	function toggleAllMembers() {
@@ -837,6 +893,37 @@
 						</button>
 					{/if}
 				</div>
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					<span class="text-base text-gray-700">번호</span>
+					<input
+						type="number"
+						min="0"
+						bind:value={rangeFrom}
+						placeholder="시작"
+						on:keydown={(e) => e.key === 'Enter' && selectMembersByNumberRange()}
+						class="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+					/>
+					<span class="text-base text-gray-500">~</span>
+					<input
+						type="number"
+						min="0"
+						bind:value={rangeTo}
+						placeholder="끝"
+						on:keydown={(e) => e.key === 'Enter' && selectMembersByNumberRange()}
+						class="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+					/>
+					<button
+						type="button"
+						on:click={selectMembersByNumberRange}
+						class="px-3 py-1.5 bg-gray-700 text-white text-base rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500"
+					>
+						구간 선택
+					</button>
+					<p class="text-sm text-gray-500">이메일 끝 번호 기준 · Shift 클릭으로 연속 선택</p>
+				</div>
+				{#if rangeSelectHint}
+					<p class="mt-1 text-sm text-gray-600">{rangeSelectHint}</p>
+				{/if}
 				<div class="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
 					{#if hasMemberFilter}
 						<p class="text-base text-gray-600">
@@ -903,6 +990,7 @@
 							<button
 								on:click={() => {
 									selectedMembers = new Set();
+									rangeSelectHint = '';
 								}}
 								class="px-3 py-2 text-base text-blue-600 hover:text-blue-800"
 							>
@@ -937,13 +1025,14 @@
 						</tr>
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
-						{#each filteredMembers as member}
+						{#each filteredMembers as member (member.email)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-6 py-4 whitespace-nowrap">
 									<input
 										type="checkbox"
 										checked={selectedMembers.has(member.email)}
-										on:change={() => toggleMemberSelection(member.email)}
+										on:click={(e) => handleMemberSelectClick(e, member.email)}
+										on:change={(e) => handleMemberSelectChange(e, member.email)}
 										class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
 									/>
 								</td>

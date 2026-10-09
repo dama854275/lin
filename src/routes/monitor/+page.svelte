@@ -7,6 +7,7 @@
 	import { user } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { isZGroupAccount, isMaGroupAccount } from '$lib/utils/groupPrefix';
+	import { isExcludedFromPeriodStats } from '$lib/utils/accountPeriodStats';
 	import { mergeMemberSetValues } from '$lib/utils/parseSetValue';
 	import { hasDisplayList, getDisplayItems, getPopupDisplayItems, aggregateItemCounts } from '$lib/utils/parseItem';
 	import { formatEmailDisplay } from '$lib/utils/formatEmail';
@@ -424,6 +425,7 @@
 	$: filteredMembers = referredMembers
 		.filter((member) => {
 			if (!member) return false;
+			if (isExcludedFromPeriodStats(member.email)) return false;
 
 			const hasSearch = !!(searchFilterTerm && searchFilterTerm.trim() !== '');
 			const needParsed =
@@ -731,7 +733,7 @@
 			}
 
 			listTruncated = !!truncated;
-			referredMembers = data || [];
+			referredMembers = (data || []).filter((m) => !isExcludedFromPeriodStats(m?.email));
 			await fetchEarnedTotalsForMembers(referredMembers, earnedStatDate);
 		} catch (err) {
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';
