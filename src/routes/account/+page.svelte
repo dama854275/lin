@@ -10,7 +10,7 @@
 		summarizeAccountPeriodStats,
 		isExpiringThisMonth,
 		isExpiringNextMonth,
-		isExcludedFromPeriodStats
+		isHiddenFromAccountList
 	} from '$lib/utils/accountPeriodStats';
 
 	let currentUser = null;
@@ -49,7 +49,7 @@
 
 	// 검색·만료 월 필터 적용 회원 목록
 	$: filteredMembers = referredMembers.filter((member) => {
-		if (isExcludedFromPeriodStats(member.email)) return false;
+		if (isHiddenFromAccountList(member.email)) return false;
 
 		if (searchQuery.trim()) {
 			const query = searchQuery.trim().toLowerCase();
@@ -58,8 +58,6 @@
 		}
 
 		if (showExpiringThisMonthOnly || showExpiringNextMonthOnly) {
-			if (isExcludedFromPeriodStats(member.email)) return false;
-
 			const matchesThisMonth = showExpiringThisMonthOnly && isExpiringThisMonth(member.product_period);
 			const matchesNextMonth = showExpiringNextMonthOnly && isExpiringNextMonth(member.product_period);
 			if (!matchesThisMonth && !matchesNextMonth) return false;
@@ -115,7 +113,7 @@
 				return;
 			}
 
-			referredMembers = (data || []).filter((m) => !isExcludedFromPeriodStats(m?.email));
+			referredMembers = (data || []).filter((m) => !isHiddenFromAccountList(m?.email));
 		} catch (err) {
 			console.error('Error fetching referred members:', err);
 			error = '회원 목록을 불러오는 중 오류가 발생했습니다.';

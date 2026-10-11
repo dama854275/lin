@@ -25,7 +25,7 @@ function getProductPeriodYearMonth(productPeriod) {
 	return getKstYearMonth(d);
 }
 
-/** 모니터·계정 목록과 기간 통계에서 제외할 계정 (hh_, z_0, m_, ma_ 접두 이메일) */
+/** 모니터 목록에서 제외할 계정 (hh_, z_0, m_, ma_ 접두 이메일) */
 export function isExcludedFromPeriodStats(email) {
 	const key = (email || '').toLowerCase();
 	return (
@@ -34,6 +34,17 @@ export function isExcludedFromPeriodStats(email) {
 		key.startsWith('m_') ||
 		key.startsWith('ma_')
 	);
+}
+
+/** 계정 목록에서 제외: ma_ 만 */
+export function isHiddenFromAccountList(email) {
+	return (email || '').toLowerCase().startsWith('ma_');
+}
+
+/** 계정 상단 통계에서 제외: ma_, hh_, z_0 */
+export function isExcludedFromAccountStats(email) {
+	const key = (email || '').toLowerCase();
+	return key.startsWith('ma_') || key.startsWith('hh_') || key.startsWith('z_0');
 }
 
 /** 하위 계정 product_period 기준 통계 */
@@ -46,7 +57,7 @@ export function summarizeAccountPeriodStats(members, now = new Date()) {
 	let expiringNextMonth = 0;
 
 	for (const member of members || []) {
-		if (isExcludedFromPeriodStats(member?.email)) continue;
+		if (isExcludedFromAccountStats(member?.email)) continue;
 
 		const productPeriod = member?.product_period;
 		if (!productPeriod) continue;
