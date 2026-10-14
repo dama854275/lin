@@ -41,10 +41,10 @@ export function isHiddenFromAccountList(email) {
 	return (email || '').toLowerCase().startsWith('ma_');
 }
 
-/** 계정 상단 통계에서 제외: ma_, hh_, z_0 */
+/** 계정 통계: z_로 시작하는 계정만 포함하고 z_0은 제외 */
 export function isExcludedFromAccountStats(email) {
-	const key = (email || '').toLowerCase();
-	return key.startsWith('ma_') || key.startsWith('hh_') || key.startsWith('z_0');
+	const key = String(email || '').trim().toLowerCase();
+	return !key.startsWith('z_') || key.startsWith('z_0');
 }
 
 /** 하위 계정 product_period 기준 통계 */

@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import ExpiryForecast from './ExpiryForecast.svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabase/client';
 	import { fetchAllRows } from '$lib/supabase/fetchAll';
@@ -670,19 +671,21 @@
 
 	<!-- 하위 계정 기간 통계 -->
 	<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-		<div class="bg-green-50 border border-green-100 rounded-lg p-4">
-			<p class="text-sm font-medium text-green-700 mb-1">현재 기간 남은 계정</p>
-			<p class="text-3xl font-bold text-green-900">{periodStats.activeCount.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
-		</div>
-		<div class="bg-orange-50 border border-orange-100 rounded-lg p-4">
-			<p class="text-sm font-medium text-orange-700 mb-1">이번 달 만료 계정</p>
-			<p class="text-3xl font-bold text-orange-900">{periodStats.expiringThisMonth.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
+		<div class="bg-purple-50 border border-purple-100 rounded-lg p-4">
+			<p class="text-sm font-medium text-purple-700 mb-1">현재 기간 남은 계정</p>
+			<p class="text-3xl font-bold text-purple-900">{periodStats.activeCount.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
 		</div>
 		<div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
-			<p class="text-sm font-medium text-blue-700 mb-1">다음 달 만료 계정</p>
-			<p class="text-3xl font-bold text-blue-900">{periodStats.expiringNextMonth.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
+			<p class="text-sm font-medium text-blue-700 mb-1">이번 달 만료 계정</p>
+			<p class="text-3xl font-bold text-blue-900">{periodStats.expiringThisMonth.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
+		</div>
+		<div class="bg-green-50 border border-green-100 rounded-lg p-4">
+			<p class="text-sm font-medium text-green-700 mb-1">다음 달 만료 계정</p>
+			<p class="text-3xl font-bold text-green-900">{periodStats.expiringNextMonth.toLocaleString('ko-KR')}<span class="text-lg font-semibold ml-1">명</span></p>
 		</div>
 	</div>
+
+	<ExpiryForecast members={referredMembers} />
 
 	<!-- 기간 적용 내역 (기본 접힌 상태, 버튼으로 펼치기) -->
 	<div class="bg-white rounded-lg shadow-md p-6 mb-6">
