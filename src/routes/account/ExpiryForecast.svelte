@@ -46,7 +46,6 @@
 			{#each days as day, index}
 				{@const thisMonth = day.date.slice(0, 7) === days[0].date.slice(0, 7)}
 				<g>
-					<title>{day.date}: {day.count}개 만료</title>
 					<rect x={48 + index * 32} y={225 - day.count / maximum * 192} width="22" height={day.count / maximum * 192} rx="3" fill={thisMonth ? '#3b82f6' : '#22c55e'} />
 					{#if day.count > 0}
 						<text x={59 + index * 32} y={217 - day.count / maximum * 192} text-anchor="middle" fill={thisMonth ? '#1e40af' : '#15803d'} font-size="11">{day.count}</text>
