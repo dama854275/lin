@@ -19,6 +19,7 @@
 	import MemberDailyEarnedPopup from '$lib/components/MemberDailyEarnedPopup.svelte';
 	import MonitorNotice from '$lib/components/MonitorNotice.svelte';
 	import SettingPresets from '$lib/components/SettingPresets.svelte';
+	import UpdateHistory from './UpdateHistory.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	let currentUser = null;
@@ -240,18 +241,29 @@
 		let running = 0;
 		let stopped = 0;
 		let stale = 0;
+		const staleIds = [];
+		const stoppedIds = [];
 		for (const member of referredMembers || []) {
 			if (!member) continue;
 			total += 1;
 			if (isStaleMember(member)) {
-				stale += 1;
+				const expiresAt = member.product_period ? new Date(member.product_period).getTime() : NaN;
+				if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+					stale += 1;
+					staleIds.push(String(member.email || '').split('@')[0]);
+				}
 				continue;
 			}
 			const parsed = getMemberDisplay(member);
-			if (parsed.status === '중지') stopped += 1;
+			if (parsed.status === '중지') {
+				stopped += 1;
+				stoppedIds.push(String(member.email || '').split('@')[0]);
+			}
 			else if (parsed.status === '정상') running += 1;
 		}
-		return { total, running, stopped, stale };
+		staleIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+		stoppedIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+		return { total, running, stopped, stale, staleIds, stoppedIds };
 	})();
 
 	function parseLevelNumber(level) {
@@ -584,7 +596,9 @@
 			totalStorageMoney += parseMoneyAmount(parsed.storageMoney);
 
 			// 아이템별 개수 계산 (괄호 안 숫자를 개수로 합산)
-			const memberItemCounts = aggregateItemCounts(parsed.items);
+			const memberItemCounts = aggregateItemCounts(
+				(parsed.items || []).filter((item) => typeof item === 'string' && !/[?\p{Script=Han}]/u.test(item))
+			);
 			for (const [name, count] of Object.entries(memberItemCounts)) {
 				itemCounts[name] = (itemCounts[name] || 0) + count;
 			}
@@ -875,19 +889,44 @@
 
 	<MonitorNotice />
 	<SettingPresets />
+	<UpdateHistory members={filteredMembers} />
 
 	<div class="flex flex-wrap items-center gap-3 mb-4">
 		<div class="status-chip status-chip-run flex items-baseline gap-2 rounded-lg bg-emerald-50 px-3 py-2 border-2 border-emerald-300">
 			<span class="text-sm font-medium text-emerald-600">동작</span>
 			<span class="text-lg font-bold text-emerald-700">{accountStatus.running}</span>
 		</div>
-		<div class="status-chip status-chip-stop flex items-baseline gap-2 rounded-lg bg-red-50 px-3 py-2 border-2 border-red-300">
+		<div class="relative group">
+		<button type="button" aria-describedby="stopped-account-tooltip" class="status-chip status-chip-stop flex items-baseline gap-2 rounded-lg bg-red-50 px-3 py-2 border-2 border-red-300">
 			<span class="text-sm font-medium text-red-600">중지</span>
 			<span class="text-lg font-bold text-red-700">{accountStatus.stopped}</span>
+		</button>
+		<div id="stopped-account-tooltip" role="tooltip" class="absolute left-0 top-full z-30 hidden pt-2 group-hover:block group-focus-within:block">
+			<div class="w-64 max-w-[80vw] max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+				<p class="font-semibold text-gray-900 border-b border-gray-100 pb-2 mb-2">중지 계정</p>
+				{#each accountStatus.stoppedIds as id}
+					<p class="text-lg font-semibold text-gray-700 py-0.5 break-all">{id}</p>
+				{:else}
+					<p class="text-sm text-gray-500">해당 계정이 없습니다.</p>
+				{/each}
+			</div>
 		</div>
-		<div class="status-chip status-chip-stale flex items-baseline gap-2 rounded-lg bg-amber-50 px-3 py-2 border-2 border-amber-300">
+		</div>
+		<div class="relative group">
+		<button type="button" aria-describedby="stale-account-tooltip" class="status-chip status-chip-stale flex items-baseline gap-2 rounded-lg bg-amber-50 px-3 py-2 border-2 border-amber-300">
 			<span class="text-sm font-medium text-amber-600">장기 미접속</span>
 			<span class="text-lg font-bold text-amber-700">{accountStatus.stale}</span>
+		</button>
+		<div id="stale-account-tooltip" role="tooltip" class="absolute left-0 top-full z-30 hidden pt-2 group-hover:block group-focus-within:block">
+			<div class="w-64 max-w-[80vw] max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+				<p class="font-semibold text-gray-900 border-b border-gray-100 pb-2 mb-2">장기 미접속 계정</p>
+				{#each accountStatus.staleIds as id}
+					<p class="text-lg font-semibold text-gray-700 py-0.5 break-all">{id}</p>
+				{:else}
+					<p class="text-sm text-gray-500">해당 계정이 없습니다.</p>
+				{/each}
+			</div>
+		</div>
 		</div>
 	</div>
 

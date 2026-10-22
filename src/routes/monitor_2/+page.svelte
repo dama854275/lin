@@ -452,7 +452,9 @@
 			totalStorageMoney += parseMoneyAmount(parsed.storageMoney);
 
 			// 아이템별 개수 계산 (괄호 안 숫자를 개수로 합산)
-			const memberItemCounts = aggregateItemCounts(parsed.items);
+			const memberItemCounts = aggregateItemCounts(
+				(parsed.items || []).filter((item) => typeof item === 'string' && !/[?\p{Script=Han}]/u.test(item))
+			);
 			for (const [name, count] of Object.entries(memberItemCounts)) {
 				itemCounts[name] = (itemCounts[name] || 0) + count;
 			}
