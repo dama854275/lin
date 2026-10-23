@@ -18,7 +18,7 @@ export function buildExpiryForecast(members, now = new Date()) {
 		const offset = Math.floor((timestamp + KST) / DAY) - start;
 		if (offset >= 0 && offset < days.length) {
 			const day = days[offset];
-			const prefix = String(member.email).trim().toLowerCase().slice(0, 3);
+			const prefix = String(member.email).trim().toLowerCase().split('@')[0].split('_').slice(0, 2).join('_');
 			day.count++;
 			day.groups[prefix] = (day.groups[prefix] || 0) + 1;
 		}
